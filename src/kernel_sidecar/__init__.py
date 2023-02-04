@@ -1,3 +1,5 @@
 from importlib.metadata import version
 
-__version__ = version('kernel-sidecar')
+from .kernel import Kernel  # noqa: F401
+
+__version__ = version("kernel-sidecar")
