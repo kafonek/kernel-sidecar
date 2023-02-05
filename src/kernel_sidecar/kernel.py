@@ -17,9 +17,8 @@ import structlog
 import zmq
 from jupyter_client import AsyncKernelClient, KernelConnectionInfo
 from jupyter_client.channels import ZMQSocketChannel
-from zmq.utils.monitor import recv_monitor_message
-
 from kernel_sidecar import actions, messages
+from zmq.utils.monitor import recv_monitor_message
 
 logger = structlog.getLogger(__name__)
 
@@ -123,9 +122,22 @@ class Kernel:
     async def interrupt_request(self) -> actions.InterruptAction:
         return await self.request(actions.InterruptAction())
 
-    async def comm_open_request(self, target_name: str) -> actions.CommOpenAction:
+    async def comm_open_request(
+        self, target_name: str, data: Optional[dict] = None
+    ) -> actions.CommOpenAction:
         action = actions.CommOpenAction()
-        action.request.content["target_name"] = target_name
+        action.request_content.target_name = target_name
+        if data:
+            action.request_content.data = data
+        return await self.request(action)
+
+    async def comm_msg_request(
+        self, comm_id: str, data: Optional[dict] = None
+    ) -> actions.CommMsgAction:
+        action = actions.CommMsgAction()
+        action.request_content.comm_id = comm_id
+        if data:
+            action.request_content.data = data
         return await self.request(action)
 
     async def watch_channel(self, channel_name: str):

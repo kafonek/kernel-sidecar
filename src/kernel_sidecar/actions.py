@@ -20,11 +20,13 @@ await action
 print(action.content)
 """
 import asyncio
-from typing import Callable, Optional, Union
+import uuid
+from typing import Any, Callable, Optional, Union
 
 import structlog
-from kernel_sidecar import messages
 from pydantic import BaseModel, Field, PrivateAttr
+
+from kernel_sidecar import messages
 
 logger = structlog.getLogger(__name__)
 
@@ -41,7 +43,6 @@ class Observer(BaseModel):
 
     message_type: Optional[str] = None
     fn: Callable  # TODO: type this correctly. async fn accepting one arg (msg) and args/kwargs
-    args: list = Field(default_factory=list)
     kwargs: dict = Field(default_factory=dict)
 
 
@@ -101,14 +102,14 @@ class KernelActionBase(BaseModel):
         if self._kernel_idle.is_set() and self._reply_seen.is_set():
             self._future.set_result(self)
 
-    def observe(self, fn: Callable, message_type: Optional[str] = None, *args, **kwargs):
+    def observe(self, fn: Callable, message_type: Optional[str] = None, **kwargs):
         """
         Attach an async callback to be run when a specific message type is handled by this Action,
         or on any message if message_type is None.
 
-        The callback will receive one argument (the message) and have args/kwargs passed through.
+        The callback will receive one argument (the message) and have kwargs passed through.
         """
-        obs = Observer(fn=fn, message_type=message_type, args=args, kwargs=kwargs)
+        obs = Observer(fn=fn, message_type=message_type, kwargs=kwargs)
         self._observers.append(obs)
         return obs
 
@@ -130,13 +131,13 @@ class KernelActionBase(BaseModel):
         for obs in self._observers:
             # await obs callbacks if it has no message_type defined or if the message type matches
             if not obs.message_type or msg.msg_type == obs.message_type:
-                await obs.fn(msg, *obs.args, **obs.kwargs)
+                await obs.fn(msg, **obs.kwargs)
 
     async def unhandled_message(self, msg: messages.Message):
         """
         Called when a message is delegated to this Action but no handler is defined for the msg_type
         """
-        logger.warning("Unhandled message")
+        logger.warning("Unhandled message", msg_type=msg.msg_type)
 
     async def handle_status(self, msg: messages.StatusMessage):
         """
@@ -145,7 +146,7 @@ class KernelActionBase(BaseModel):
         """
         if msg.content.execution_state == messages.KernelStatus.idle:
             self._kernel_idle.set()
-        self.maybe_set_future()
+            self.maybe_set_future()
 
     async def handle_shutdown_reply(self, msg: messages.ShutdownMessage):
         logger.warning("Kernel shutdown in progress")
@@ -243,19 +244,56 @@ class InterruptAction(KernelActionBase):
         self.maybe_set_future()
 
 
+# Comms are a little different from our other actions because there is not necessarily a
+# "reply" message. For instance in a comm_open, there can simply be a kernel busy/idle with
+# no other message. There can also be zero, one, or more messages emitted by the kernel
+# during comm open or comm msg handling. If there's an error, it comes through as a stream
+# message.
+class CommActionBase(KernelActionBase):
+    data: list[Any] = Field(default_factory=list)
+    error: str = None
+
+    async def handle_status(self, msg: messages.StatusMessage):
+        if msg.content.execution_state == messages.KernelStatus.idle:
+            self._future.set_result(self)
+
+    async def handle_comm_msg(self, msg: messages.CommMsgMessage):
+        self.data.append(msg.content.data)
+
+    async def handle_stream(self, msg: messages.StreamMessage):
+        if msg.content.name == "stderr":
+            self.error = msg.content.text
+
+
 class CommOpenRequestContent(BaseModel):
+    comm_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     target_name: str = ""
+    data: dict = Field(default_factory=dict)
 
 
-class CommOpenAction(KernelActionBase):
+class CommOpenAction(CommActionBase):
     request_channel = "shell"
     request_msg_type = "comm_open"
     request_content: CommOpenRequestContent = Field(default_factory=CommOpenRequestContent)
 
-    async def handle_comm_close(self, msg: messages.CommCloseMessage):
-        self._reply_seen.set()
-        self.maybe_set_future()
+    @property
+    def comm_id(self):
+        return self.request_content.comm_id
 
-    async def handle_stream(self, msg: messages.StreamMessage):
-        if msg.content.name == "stderr":
-            logger.error(msg.content.text)
+    async def handle_comm_close(self, msg: messages.CommCloseMessage):
+        pass
+
+
+class CommMsgRequestContent(BaseModel):
+    comm_id: str = ""
+    data: dict = Field(default_factory=dict)
+
+
+class CommMsgAction(CommActionBase):
+    request_channel = "shell"
+    request_msg_type = "comm_msg"
+    request_content: CommMsgRequestContent = Field(default_factory=CommMsgRequestContent)
+
+    @property
+    def comm_id(self):
+        return self.request_content.comm_id

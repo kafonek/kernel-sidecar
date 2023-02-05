@@ -57,7 +57,7 @@ msg
 """  # noqa: E501
 import enum
 from datetime import datetime
-from typing import Annotated, List, Literal, Union
+from typing import Annotated, Any, List, Literal, Union
 
 from pydantic import BaseModel, Field
 
@@ -258,7 +258,7 @@ class UpdateDisplayDataMessage(MessageBase):
 # Comms
 class CommMsgContent(BaseModel):
     comm_id: str
-    data: dict = Field(default_factory=dict)
+    data: Any
 
 
 class CommMsgMessage(MessageBase):

@@ -1,4 +1,7 @@
 import asyncio
+import collections
+import textwrap
+from unittest.mock import AsyncMock
 
 from kernel_sidecar import Kernel, actions, messages
 
@@ -153,3 +156,144 @@ async def test_complete(kernel: Kernel):
     assert complete_action.content.status == "ok"
     expected_matches = [meth for meth in dir(int) if not meth.startswith("_")]
     assert complete_action.content.matches == expected_matches
+
+
+async def test_observer(kernel: Kernel):
+    action = await kernel.execute_request("x = 1")
+    cb = AsyncMock()
+    obs = action.observe(cb, message_type="execute_reply", test_kwarg="test")
+    await action
+
+    assert obs.dict() == {
+        "fn": cb,
+        "message_type": "execute_reply",
+        "kwargs": {"test_kwarg": "test"},
+    }
+    cb.assert_awaited_once()
+    assert isinstance(cb.call_args.args[0], messages.ExecuteReplyMessage)
+    assert cb.call_args.kwargs == {"test_kwarg": "test"}
+
+
+async def test_no_msg_type_observer(kernel: Kernel):
+    action = await kernel.execute_request("x = 1")
+    cb = AsyncMock()
+    action.observe(cb)
+    await action
+
+    assert cb.call_count == 4
+    msg_counts = collections.defaultdict(int)
+    for call in cb.call_args_list:
+        msg_counts[call.args[0].msg_type] += 1
+    assert msg_counts == {
+        "status": 2,
+        "execute_input": 1,
+        "execute_reply": 1,
+    }
+
+
+async def test_remove_observer(kernel: Kernel):
+    action = await kernel.execute_request("x = 1")
+    cb = AsyncMock()
+    obs = action.observe(cb)
+    action.remove_observer(obs)
+    await action
+
+    cb.assert_not_awaited()
+
+
+async def test_comm_open(kernel: Kernel):
+    code = textwrap.dedent(
+        """
+    def comm_fn(comm, open_msg):
+        comm.send("open")
+        comm.send({'echo': open_msg['content']['data']})
+
+    get_ipython().kernel.comm_manager.register_target("test_comm", comm_fn)
+    """
+    )
+    execute_action = await kernel.execute_request(code)
+    await execute_action
+    assert execute_action.status == "ok"
+
+    comm_open_action = await kernel.comm_open_request(target_name="test_comm", data={"test": 1})
+    await comm_open_action
+
+    assert comm_open_action.comm_id
+    assert comm_open_action.data == ["open", {"echo": {"test": 1}}]
+
+
+async def test_unregistered_comm(kernel: Kernel):
+    comm_open_action = await kernel.comm_open_request(target_name="test_comm")
+    await comm_open_action
+    assert comm_open_action.error == "No such comm target registered: test_comm\n"
+
+
+async def test_comm_open_error(kernel: Kernel):
+    code = textwrap.dedent(
+        """
+    def comm_fn(comm, open_msg):
+        raise ValueError("test")
+
+    get_ipython().kernel.comm_manager.register_target("test_comm", comm_fn)
+    """
+    )
+    execute_action = await kernel.execute_request(code)
+    await execute_action
+    assert execute_action.status == "ok"
+
+    comm_open_action = await kernel.comm_open_request(target_name="test_comm")
+    await comm_open_action
+    assert comm_open_action.error.strip().split("\n")[-1] == "ValueError: test"
+
+
+async def test_comm_msg(kernel: Kernel):
+    code = textwrap.dedent(
+        """
+    def comm_fn(comm, open_msg):
+        @comm.on_msg
+        def _recv(msg):
+            comm.send("msg recv")
+            comm.send({'echo': msg['content']['data']})
+
+    get_ipython().kernel.comm_manager.register_target("test_comm", comm_fn)
+    """
+    )
+    execute_action = await kernel.execute_request(code)
+    await execute_action
+    assert execute_action.status == "ok"
+
+    comm_open_action = await kernel.comm_open_request(target_name="test_comm")
+    await comm_open_action
+
+    comm_msg_action = await kernel.comm_msg_request(
+        comm_id=comm_open_action.comm_id, data={"test": 1}
+    )
+    await comm_msg_action
+
+    assert comm_msg_action.data == ["msg recv", {"echo": {"test": 1}}]
+
+
+async def test_comm_msg_error(kernel: Kernel):
+    code = textwrap.dedent(
+        """
+    def comm_fn(comm, open_msg):
+        @comm.on_msg
+        def _recv(msg):
+            comm.send("msg recv")
+            raise ValueError("test")
+
+    get_ipython().kernel.comm_manager.register_target("test_comm", comm_fn)
+    """
+    )
+    execute_action = await kernel.execute_request(code)
+    await execute_action
+    assert execute_action.status == "ok"
+
+    comm_open_action = await kernel.comm_open_request(target_name="test_comm")
+    await comm_open_action
+
+    comm_msg_action = await kernel.comm_msg_request(comm_id=comm_open_action.comm_id)
+    await comm_msg_action
+
+    assert comm_msg_action.data == ["msg recv"]
+    assert comm_msg_action.error.strip().split("\n")[-1] == "ValueError: test"
