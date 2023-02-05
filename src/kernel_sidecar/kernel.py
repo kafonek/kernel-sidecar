@@ -9,6 +9,7 @@ print(action.content)
 """
 
 import asyncio
+import pprint
 from typing import List, Optional, TypedDict
 
 import pydantic
@@ -16,8 +17,9 @@ import structlog
 import zmq
 from jupyter_client import AsyncKernelClient, KernelConnectionInfo
 from jupyter_client.channels import ZMQSocketChannel
-from kernel_sidecar import actions, messages
 from zmq.utils.monitor import recv_monitor_message
+
+from kernel_sidecar import actions, messages
 
 logger = structlog.getLogger(__name__)
 
@@ -96,6 +98,7 @@ class Kernel:
         try:
             channel: ZMQSocketChannel = getattr(self.kc, f"{action.request_channel}_channel")
             channel.send(msg)
+            logger.info("Sent request to kernel", msg=pprint.pformat(msg))
         except Exception as e:
             logger.exception("Error sending message", msg=msg)
             raise e
@@ -189,7 +192,7 @@ class Kernel:
                     await asyncio.sleep(0.001)
                     continue
                 raw_msg: dict = await channel.get_msg()
-                logger.debug("Received message from zmq", raw_msg=raw_msg)
+                logger.debug("Received message from zmq", raw_msg=pprint.pformat(raw_msg))
                 self.mq.put_nowait(raw_msg)
             except asyncio.CancelledError:
                 break
