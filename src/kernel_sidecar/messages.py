@@ -57,7 +57,7 @@ msg
 """  # noqa: E501
 import enum
 from datetime import datetime
-from typing import Annotated, List, Literal, Optional, Union
+from typing import Annotated, List, Literal, Union
 
 from pydantic import BaseModel, Field
 
@@ -95,6 +95,9 @@ class KernelStatus(str, enum.Enum):
 
 class StatusContent(BaseModel):
     execution_state: KernelStatus
+
+    class Config:
+        use_enum_values = True
 
 
 class StatusMessage(MessageBase):
@@ -159,14 +162,17 @@ class CellStatus(str, enum.Enum):
 
 
 class ExecuteReplyOkContent(BaseModel):
-    status: Literal[CellStatus.ok]
+    status: Literal[CellStatus.ok] = CellStatus.ok
     execution_count: int
     payload: List[Payload] = Field(default_factory=list)
     user_expressions: dict = Field(default_factory=dict)
 
+    class Config:
+        use_enum_values = True
+
 
 class ExecuteReplyErrorContent(BaseModel):
-    status: Literal[CellStatus.error]
+    status: Literal[CellStatus.error] = CellStatus.error
     execution_count: int
     payload: List[Payload] = Field(default_factory=list)
     user_expressions: dict = Field(default_factory=dict)
@@ -175,9 +181,15 @@ class ExecuteReplyErrorContent(BaseModel):
     evalue: str
     traceback: List[str]
 
+    class Config:
+        use_enum_values = True
+
 
 class ExecuteReplyAbortedContent(BaseModel):
-    status: Literal[CellStatus.aborted]
+    status: Literal[CellStatus.aborted] = CellStatus.aborted
+
+    class Config:
+        use_enum_values = True
 
 
 ExecuteReplyContent = Annotated[
@@ -200,7 +212,6 @@ class ExecuteResultContent(BaseModel):
     execution_count: int
     data: dict  # mimebundle
     metadata: dict = Field(default_factory=dict)
-    transient: Optional[dict] = None
 
 
 class ExecuteResultMessage(MessageBase):
@@ -217,6 +228,9 @@ class StreamContent(BaseModel):
     output_type: Literal["stream"] = "stream"
     name: StreamChannel
     text: str
+
+    class Config:
+        use_enum_values = True
 
 
 class StreamMessage(MessageBase):
