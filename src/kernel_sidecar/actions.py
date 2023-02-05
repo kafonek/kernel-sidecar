@@ -78,7 +78,12 @@ class KernelActionBase(BaseModel):
     _observers: list[Observer] = PrivateAttr(default_factory=list)
 
     def __await__(self) -> "KernelActionBase":
+        """Support 'await action' syntax"""
         return self._future.__await__()
+
+    def __hash__(self) -> int:
+        """Primarily here to support asyncio.gather(action1, action2)"""
+        return hash(self.json(sort_keys=True))
 
     def maybe_set_future(self):
         """
@@ -163,8 +168,8 @@ class ExecuteRequestContent(BaseModel):
     silent: bool = False
     store_history: bool = True
     user_expressions: dict = Field(default_factory=dict)
-    allow_stdin: bool = False
-    stop_on_error: bool = False
+    allow_stdin: bool = True
+    stop_on_error: bool = True
 
 
 OutputTypes = Union[
