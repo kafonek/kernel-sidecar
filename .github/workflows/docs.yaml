@@ -3,7 +3,7 @@ name: Docs
 on: [push]
 
 concurrency:
-  group: ${{ github.ref }}
+  group: docs-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
