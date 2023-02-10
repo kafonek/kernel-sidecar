@@ -130,7 +130,7 @@ async def test_update_display(kernel: Kernel):
 
 
 async def test_interrupt(kernel: Kernel):
-    first_execute_action = await kernel.execute_request("import time; time.sleep(10)")
+    first_execute_action = await kernel.execute_request("import time; time.sleep(60)")
     second_execute_action = await kernel.execute_request("1 + 1")
     interrupt_action = await kernel.interrupt_request()
 
@@ -219,7 +219,9 @@ async def test_comm_open(kernel: Kernel):
     await comm_open_action
 
     assert comm_open_action.comm_id
-    assert comm_open_action.data == ["open", {"echo": {"test": 1}}]
+    assert len(comm_open_action.comms) == 2
+    assert comm_open_action.comms[0].data == "open"
+    assert comm_open_action.comms[1].data == {"echo": {"test": 1}}
 
 
 async def test_unregistered_comm(kernel: Kernel):
@@ -270,7 +272,9 @@ async def test_comm_msg(kernel: Kernel):
     )
     await comm_msg_action
 
-    assert comm_msg_action.data == ["msg recv", {"echo": {"test": 1}}]
+    assert len(comm_msg_action.comms) == 2
+    assert comm_msg_action.comms[0].data == "msg recv"
+    assert comm_msg_action.comms[1].data == {"echo": {"test": 1}}
 
 
 async def test_comm_msg_error(kernel: Kernel):
@@ -295,5 +299,6 @@ async def test_comm_msg_error(kernel: Kernel):
     comm_msg_action = await kernel.comm_msg_request(comm_id=comm_open_action.comm_id)
     await comm_msg_action
 
-    assert comm_msg_action.data == ["msg recv"]
+    assert len(comm_msg_action.comms) == 1
+    assert comm_msg_action.comms[0].data == "msg recv"
     assert comm_msg_action.error.strip().split("\n")[-1] == "ValueError: test"

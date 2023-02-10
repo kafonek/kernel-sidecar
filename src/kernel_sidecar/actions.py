@@ -21,12 +21,11 @@ print(action.content)
 """
 import asyncio
 import uuid
-from typing import Any, Callable, Optional, Union
+from typing import Callable, Optional, Union
 
 import structlog
-from pydantic import BaseModel, Field, PrivateAttr
-
 from kernel_sidecar import messages
+from pydantic import BaseModel, Field, PrivateAttr
 
 logger = structlog.getLogger(__name__)
 
@@ -72,6 +71,11 @@ class KernelActionBase(BaseModel):
     # for how msg is built and then updated with the model/dicts above.
 
     msg_id: Optional[str] = None  # set by Kernel after it calls into kernel_client.session.msg
+
+    # Comm open, comm close, and comm msg can theoertically come in from the kernel during any msg
+    comms: list[
+        Union[messages.CommOpenContent, messages.CommCloseContent, messages.CommMsgContent]
+    ] = Field(default_factory=list)
 
     _kernel_idle: asyncio.Event = PrivateAttr(default_factory=asyncio.Event)
     _reply_seen: asyncio.Event = PrivateAttr(default_factory=asyncio.Event)
@@ -150,6 +154,15 @@ class KernelActionBase(BaseModel):
 
     async def handle_shutdown_reply(self, msg: messages.ShutdownMessage):
         logger.warning("Kernel shutdown in progress")
+
+    async def handle_comm_open(self, msg: messages.CommOpenMessage):
+        self.comms.append(msg.content)
+
+    async def handle_comm_close(self, msg: messages.CommCloseMessage):
+        self.comms.append(msg.content)
+
+    async def handle_comm_msg(self, msg: messages.CommMsgMessage):
+        self.comms.append(msg.content)
 
 
 class KernelInfoAction(KernelActionBase):
@@ -250,15 +263,11 @@ class InterruptAction(KernelActionBase):
 # during comm open or comm msg handling. If there's an error, it comes through as a stream
 # message.
 class CommActionBase(KernelActionBase):
-    data: list[Any] = Field(default_factory=list)
     error: str = None
 
     async def handle_status(self, msg: messages.StatusMessage):
         if msg.content.execution_state == messages.KernelStatus.idle:
             self._future.set_result(self)
-
-    async def handle_comm_msg(self, msg: messages.CommMsgMessage):
-        self.data.append(msg.content.data)
 
     async def handle_stream(self, msg: messages.StreamMessage):
         if msg.content.name == "stderr":
@@ -279,9 +288,6 @@ class CommOpenAction(CommActionBase):
     @property
     def comm_id(self):
         return self.request_content.comm_id
-
-    async def handle_comm_close(self, msg: messages.CommCloseMessage):
-        pass
 
 
 class CommMsgRequestContent(BaseModel):

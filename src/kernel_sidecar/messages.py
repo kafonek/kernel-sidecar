@@ -250,12 +250,27 @@ class DisplayDataMessage(MessageBase):
     content: DisplayDataContent
 
 
+class UpdateDisplayDataContent(DisplayDataContent):
+    output_type: Literal["update_display_data"] = "update_display_data"
+
+
 class UpdateDisplayDataMessage(MessageBase):
     msg_type: Literal["update_display_data"]
-    content: DisplayDataContent
+    content: UpdateDisplayDataContent
 
 
 # Comms
+class CommOpenContent(BaseModel):
+    comm_id: str
+    target_name: str
+    data: Any
+
+
+class CommOpenMessage(MessageBase):
+    msg_type: Literal["comm_open"]
+    content: CommOpenContent
+
+
 class CommMsgContent(BaseModel):
     comm_id: str
     data: Any
@@ -266,6 +281,16 @@ class CommMsgMessage(MessageBase):
     content: CommMsgContent
 
 
+class CommCloseContent(BaseModel):
+    comm_id: str
+    data: Any
+
+
+class CommCloseMessage(MessageBase):
+    msg_type: Literal["comm_close"]
+    content: CommCloseContent
+
+
 class CommInfoReplyContent(BaseModel):
     comms: dict  # {comm-id: {target_name: str}}
 
@@ -273,11 +298,6 @@ class CommInfoReplyContent(BaseModel):
 class CommInfoReplyMessage(MessageBase):
     msg_type: Literal["comm_info_reply"]
     content: CommInfoReplyContent
-
-
-class CommCloseMessage(MessageBase):
-    msg_type: Literal["comm_close"]
-    content: CommMsgContent
 
 
 # Kernel info
@@ -374,6 +394,7 @@ Message = Annotated[
         StreamMessage,
         DisplayDataMessage,
         UpdateDisplayDataMessage,
+        CommOpenMessage,
         CommMsgMessage,
         CommInfoReplyMessage,
         CommCloseMessage,
