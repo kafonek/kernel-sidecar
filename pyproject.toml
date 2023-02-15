@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "kernel-sidecar"
-version = "0.1.3"
+version = "0.1.4"
 description = "A sidecar "
 authors = ["Matt Kafonek <matt.kafonek@noteable.io>"]
 readme = "README.md"
