@@ -68,7 +68,7 @@ class Kernel:
         self.channel_watching_tasks: List[asyncio.Task] = []
         self.channel_watcher_parent_tasks: List[asyncio.Task] = []
 
-    async def request(self, action: actions.KernelActionBase) -> actions.KernelActionBase:
+    def request(self, action: actions.KernelActionBase) -> actions.KernelActionBase:
         """
         Build a kernel_client.session.msg request dictionary using parameters from the Action model
         and send that request to the kernel.
@@ -87,8 +87,8 @@ class Kernel:
 
         # update the msg dictionary with any content / header / metadata from the Action model
         msg["content"].update(action.request_content.dict())
-        msg["header"].update(action.request_header.dict())
         msg["metadata"].update(action.request_metadata.dict())
+        msg["header"].update(action.request_header.dict(exclude_unset=True))
 
         # Add to our internal dict for message routing (parent_header.msg_id -> action handlers)
         self.actions[msg_id] = action
@@ -103,42 +103,40 @@ class Kernel:
             raise e
         return action
 
-    async def kernel_info_request(self) -> actions.KernelInfoAction:
-        return await self.request(actions.KernelInfoAction())
+    def kernel_info_request(self) -> actions.KernelInfoAction:
+        return self.request(actions.KernelInfoAction())
 
-    async def execute_request(self, code: str) -> actions.ExecuteAction:
+    def execute_request(self, code: str) -> actions.ExecuteAction:
         action = actions.ExecuteAction()
         action.request_content.code = code
-        return await self.request(action)
+        return self.request(action)
 
-    async def complete_request(
+    def complete_request(
         self, code: str, cursor_pos: Optional[int] = None
     ) -> actions.CompleteAction:
         action = actions.CompleteAction()
         action.request_content.code = code
         action.request_content.cursor_pos = cursor_pos
-        return await self.request(action)
+        return self.request(action)
 
-    async def interrupt_request(self) -> actions.InterruptAction:
-        return await self.request(actions.InterruptAction())
+    def interrupt_request(self) -> actions.InterruptAction:
+        return self.request(actions.InterruptAction())
 
-    async def comm_open_request(
+    def comm_open_request(
         self, target_name: str, data: Optional[dict] = None
     ) -> actions.CommOpenAction:
         action = actions.CommOpenAction()
         action.request_content.target_name = target_name
         if data:
             action.request_content.data = data
-        return await self.request(action)
+        return self.request(action)
 
-    async def comm_msg_request(
-        self, comm_id: str, data: Optional[dict] = None
-    ) -> actions.CommMsgAction:
+    def comm_msg_request(self, comm_id: str, data: Optional[dict] = None) -> actions.CommMsgAction:
         action = actions.CommMsgAction()
         action.request_content.comm_id = comm_id
         if data:
             action.request_content.data = data
-        return await self.request(action)
+        return self.request(action)
 
     async def watch_channel(self, channel_name: str):
         """

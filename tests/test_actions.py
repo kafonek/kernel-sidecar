@@ -7,7 +7,7 @@ from kernel_sidecar import Kernel, actions, messages
 
 
 async def test_kernel_info(kernel: Kernel):
-    action = await kernel.kernel_info_request()
+    action = kernel.kernel_info_request()
 
     assert isinstance(action, actions.KernelInfoAction)
     assert action.msg_id
@@ -20,7 +20,7 @@ async def test_kernel_info(kernel: Kernel):
 
 
 async def test_execute_statement(kernel: Kernel):
-    action = await kernel.execute_request("1 + 1")
+    action = kernel.execute_request("1 + 1")
 
     assert isinstance(action, actions.ExecuteAction)
     assert action.msg_id
@@ -39,7 +39,7 @@ async def test_execute_statement(kernel: Kernel):
 
 
 async def test_execute_stream(kernel: Kernel):
-    action = await kernel.execute_request("print('hello world')")
+    action = kernel.execute_request("print('hello world')")
 
     assert isinstance(action, actions.ExecuteAction)
     assert action.msg_id
@@ -57,7 +57,7 @@ async def test_execute_stream(kernel: Kernel):
 
 
 async def test_display_data(kernel: Kernel):
-    action = await kernel.execute_request('display("hello world")')
+    action = kernel.execute_request('display("hello world")')
 
     assert isinstance(action, actions.ExecuteAction)
     assert action.msg_id
@@ -76,7 +76,7 @@ async def test_display_data(kernel: Kernel):
 
 
 async def test_display_with_id(kernel: Kernel):
-    action = await kernel.execute_request('display("hello world", display_id="test")')
+    action = kernel.execute_request('display("hello world", display_id="test")')
 
     assert isinstance(action, actions.ExecuteAction)
     assert action.msg_id
@@ -105,7 +105,7 @@ async def test_update_display(kernel: Kernel):
     disp = display("hello world", display_id="test")
     disp.update("nice to meet you")
     """
-    action = await kernel.execute_request(code)
+    action = kernel.execute_request(code)
 
     assert isinstance(action, actions.ExecuteAction)
     assert action.msg_id
@@ -129,10 +129,23 @@ async def test_update_display(kernel: Kernel):
     }
 
 
+async def test_override_request_header(kernel: Kernel):
+    action = actions.ExecuteAction()
+    action.request_header.username = "cell1"
+    action.request_content.code = "1 + 1"
+    cb = AsyncMock()
+    kernel.request(action)
+    action.observe(cb, message_type="execute_reply")
+    await action
+    cb.assert_called_once()
+    msg: messages.ExecuteReplyMessage = cb.call_args.args[0]
+    assert msg.parent_header.username == "cell1"
+
+
 async def test_interrupt(kernel: Kernel):
-    first_execute_action = await kernel.execute_request("import time; time.sleep(60)")
-    second_execute_action = await kernel.execute_request("1 + 1")
-    interrupt_action = await kernel.interrupt_request()
+    first_execute_action = kernel.execute_request("import time; time.sleep(60)")
+    second_execute_action = kernel.execute_request("1 + 1")
+    interrupt_action = kernel.interrupt_request()
 
     assert isinstance(first_execute_action, actions.ExecuteAction)
     assert isinstance(second_execute_action, actions.ExecuteAction)
@@ -147,10 +160,10 @@ async def test_interrupt(kernel: Kernel):
 
 
 async def test_complete(kernel: Kernel):
-    execute_action = await kernel.execute_request("x = 1")
+    execute_action = kernel.execute_request("x = 1")
     await execute_action
 
-    complete_action = await kernel.complete_request("x.")
+    complete_action = kernel.complete_request("x.")
     await complete_action
 
     assert complete_action.content.status == "ok"
@@ -159,7 +172,7 @@ async def test_complete(kernel: Kernel):
 
 
 async def test_observer(kernel: Kernel):
-    action = await kernel.execute_request("x = 1")
+    action = kernel.execute_request("x = 1")
     cb = AsyncMock()
     obs = action.observe(cb, message_type="execute_reply", test_kwarg="test")
     await action
@@ -175,7 +188,7 @@ async def test_observer(kernel: Kernel):
 
 
 async def test_no_msg_type_observer(kernel: Kernel):
-    action = await kernel.execute_request("x = 1")
+    action = kernel.execute_request("x = 1")
     cb = AsyncMock()
     action.observe(cb)
     await action
@@ -192,7 +205,7 @@ async def test_no_msg_type_observer(kernel: Kernel):
 
 
 async def test_remove_observer(kernel: Kernel):
-    action = await kernel.execute_request("x = 1")
+    action = kernel.execute_request("x = 1")
     cb = AsyncMock()
     obs = action.observe(cb)
     action.remove_observer(obs)
@@ -211,11 +224,11 @@ async def test_comm_open(kernel: Kernel):
     get_ipython().kernel.comm_manager.register_target("test_comm", comm_fn)
     """
     )
-    execute_action = await kernel.execute_request(code)
+    execute_action = kernel.execute_request(code)
     await execute_action
     assert execute_action.status == "ok"
 
-    comm_open_action = await kernel.comm_open_request(target_name="test_comm", data={"test": 1})
+    comm_open_action = kernel.comm_open_request(target_name="test_comm", data={"test": 1})
     await comm_open_action
 
     assert comm_open_action.comm_id
@@ -225,7 +238,7 @@ async def test_comm_open(kernel: Kernel):
 
 
 async def test_unregistered_comm(kernel: Kernel):
-    comm_open_action = await kernel.comm_open_request(target_name="test_comm")
+    comm_open_action = kernel.comm_open_request(target_name="test_comm")
     await comm_open_action
     assert comm_open_action.error == "No such comm target registered: test_comm\n"
 
@@ -239,7 +252,7 @@ async def test_comm_open_error(kernel: Kernel):
     get_ipython().kernel.comm_manager.register_target("test_comm", comm_fn)
     """
     )
-    execute_action = await kernel.execute_request(code)
+    execute_action = kernel.execute_request(code)
     await execute_action
     assert execute_action.status == "ok"
 
@@ -260,16 +273,14 @@ async def test_comm_msg(kernel: Kernel):
     get_ipython().kernel.comm_manager.register_target("test_comm", comm_fn)
     """
     )
-    execute_action = await kernel.execute_request(code)
+    execute_action = kernel.execute_request(code)
     await execute_action
     assert execute_action.status == "ok"
 
-    comm_open_action = await kernel.comm_open_request(target_name="test_comm")
+    comm_open_action = kernel.comm_open_request(target_name="test_comm")
     await comm_open_action
 
-    comm_msg_action = await kernel.comm_msg_request(
-        comm_id=comm_open_action.comm_id, data={"test": 1}
-    )
+    comm_msg_action = kernel.comm_msg_request(comm_id=comm_open_action.comm_id, data={"test": 1})
     await comm_msg_action
 
     assert len(comm_msg_action.comms) == 2
@@ -289,14 +300,14 @@ async def test_comm_msg_error(kernel: Kernel):
     get_ipython().kernel.comm_manager.register_target("test_comm", comm_fn)
     """
     )
-    execute_action = await kernel.execute_request(code)
+    execute_action = kernel.execute_request(code)
     await execute_action
     assert execute_action.status == "ok"
 
-    comm_open_action = await kernel.comm_open_request(target_name="test_comm")
+    comm_open_action = kernel.comm_open_request(target_name="test_comm")
     await comm_open_action
 
-    comm_msg_action = await kernel.comm_msg_request(comm_id=comm_open_action.comm_id)
+    comm_msg_action = kernel.comm_msg_request(comm_id=comm_open_action.comm_id)
     await comm_msg_action
 
     assert len(comm_msg_action.comms) == 1

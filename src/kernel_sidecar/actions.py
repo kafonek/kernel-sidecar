@@ -21,11 +21,13 @@ print(action.content)
 """
 import asyncio
 import uuid
+from datetime import datetime
 from typing import Callable, Optional, Union
 
 import structlog
-from kernel_sidecar import messages
 from pydantic import BaseModel, Field, PrivateAttr
+
+from kernel_sidecar import messages
 
 logger = structlog.getLogger(__name__)
 
@@ -43,6 +45,19 @@ class Observer(BaseModel):
     message_type: Optional[str] = None
     fn: Callable  # TODO: type this correctly. async fn accepting one arg (msg) and args/kwargs
     kwargs: dict = Field(default_factory=dict)
+
+
+class RequestHeader(BaseModel):
+    """
+    Header dictionary that you would see from kernel_client.session.msg('msg_type')
+    """
+
+    msg_id: Optional[str] = None
+    msg_type: Optional[str] = None
+    username: Optional[str] = None
+    session: Optional[str] = None
+    date: Optional[datetime] = None
+    version: Optional[str] = None
 
 
 class KernelActionBase(BaseModel):
@@ -63,7 +78,7 @@ class KernelActionBase(BaseModel):
     # These are BaseModel in case submodels want to model their content / etc, a bare BaseModel
     # is effectively an empty dict.
     request_content: BaseModel = Field(default_factory=BaseModel)
-    request_header: BaseModel = Field(default_factory=BaseModel)
+    request_header: RequestHeader = Field(default_factory=RequestHeader)
     request_metadata: BaseModel = Field(default_factory=BaseModel)
     # Note on the request_* syntax above: I first put those into their own RequestParam model and
     # tried calling kernel_client.session.msg(**action.request.dict()) but that overrode the Header
