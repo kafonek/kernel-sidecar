@@ -381,6 +381,17 @@ class ShutdownMessage(MessageBase):
     content: ShutdownContent
 
 
+# Input Request
+class InputRequestContent(BaseModel):
+    prompt: str
+    password: bool
+
+
+class InputRequestMessage(MessageBase):
+    msg_type: Literal["input_request"]
+    content: InputRequestContent
+
+
 # See module docstring. Use:
 # msg = pydantic.parse_obj_as(Message, raw_dict_from_zmq)
 # msg will be one of the specific message types in the Union below.
@@ -404,6 +415,7 @@ Message = Annotated[
         HistoryReplyMessage,
         InterruptReplyMessage,
         ShutdownMessage,
+        InputRequestMessage,
     ],
     Field(discriminator="msg_type"),
 ]

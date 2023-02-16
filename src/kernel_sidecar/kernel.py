@@ -68,6 +68,14 @@ class Kernel:
         self.channel_watching_tasks: List[asyncio.Task] = []
         self.channel_watcher_parent_tasks: List[asyncio.Task] = []
 
+    def send_stdin(self, value: str) -> None:
+        msg: TypedJupyterClientMessage = self.kc.session.msg("input_reply")
+        msg["content"]["value"] = value
+        try:
+            self.kc.stdin_channel.send(msg)
+        except Exception:
+            logger.exception("Error sending stdin")
+
     def request(self, action: actions.KernelActionBase) -> actions.KernelActionBase:
         """
         Build a kernel_client.session.msg request dictionary using parameters from the Action model
@@ -269,7 +277,7 @@ class Kernel:
         logger.warning("Got message with untracked parent header message id", msg=msg)
 
     async def __aenter__(self) -> "Kernel":
-        for channel in ["iopub", "shell", "control"]:
+        for channel in ["iopub", "shell", "control", "stdin"]:
             task = asyncio.create_task(self.watch_channel(channel))
             self.channel_watcher_parent_tasks.append(task)
         self.mq_task = asyncio.create_task(self.process_message())

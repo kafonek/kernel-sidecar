@@ -129,6 +129,32 @@ async def test_update_display(kernel: Kernel):
     }
 
 
+async def test_input_request(kernel: Kernel):
+    code = """
+    x = input()
+    x
+    """
+
+    async def send_input_reply(msg: messages.InputRequestMessage):
+        kernel.send_stdin("hello world")
+
+    action = kernel.execute_request(code)
+    action.observe(send_input_reply, message_type="input_request")
+
+    assert isinstance(action, actions.ExecuteAction)
+    assert action.msg_id
+    assert action.request_content.code == code
+
+    await action
+
+    assert action.outputs[0].dict() == {
+        "output_type": "execute_result",
+        "data": {"text/plain": "'hello world'"},
+        "metadata": {},
+        "execution_count": 1,
+    }
+
+
 async def test_override_request_header(kernel: Kernel):
     action = actions.ExecuteAction()
     action.request_header.username = "cell1"
