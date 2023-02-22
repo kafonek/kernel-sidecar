@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.2.0] - 2023-02-22
+
+### Changed
+- Significant refactors after working on integrating `kernel-sidecar` into a production app
+  - `request` models (`execute_request`, `kernel_info_request`, etc) are split out into their own module from `actions`
+  - `actions` are now primarily responsible for knowing when they're complete (`awaitable`) and attaching 0-n `handlers`
+  - `action.observe` removed since you can attach more than one `handler`. It was unclear when to use `observers` vs `handlers`
+
 ## [0.1.5] - 2023-02-16
 
 ### Added

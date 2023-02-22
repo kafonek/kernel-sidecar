@@ -9,45 +9,35 @@ print(action.content)
 """
 
 import asyncio
-import pprint
-from typing import List, Optional, TypedDict
+import logging
+from typing import List, Optional
 
 import pydantic
-import structlog
 import zmq
 from jupyter_client import AsyncKernelClient, KernelConnectionInfo
 from jupyter_client.channels import ZMQSocketChannel
-from kernel_sidecar import actions, messages
 from zmq.utils.monitor import recv_monitor_message
 
-logger = structlog.getLogger(__name__)
+from kernel_sidecar import actions
+from kernel_sidecar.models import messages, requests
+
+logger = logging.getLogger(__name__)
 
 
-# purely for type hinting kernel_client.session.msg return value
-class TypedJupyterClientMessage(TypedDict):
-    buffers: list
-    content: dict
-    header: dict
-    metadata: dict
-    msg_id: str
-    msg_type: str
-    parent_header: dict
-
-
-class Kernel:
+class SidecarKernelClient:
     """
     Primary interface between our Sidecar and a Kernel.
      - Manages the zmq connections between Sidecar and Kernel
-     - Takes in Action models and creates request messages sent to Kernel
+     - Sends Pydantic-modeled (`models.requests.py`) messages to the Kernel
      - Watches ZMQ messages for messages coming in from the Kernel
-     - Parses messages into Pydantic models
-     - Delegates handling those Pydantic models to the appropriate Action that spawned
-       the request-reply pattern
+     - Parses messages coming from the Kernel into (`models.messages.py`) Pydantic models
+     - Delegates handling those messages to the appropriate Action that started the request-reply
+       sequence, and that Action should have Handlers / async fn callbacks to handle business logic
     """
 
     _message_model = messages.Message
     # ^^ discriminator model to parse messages coming in from ZMQ. Override this if you have
-    # custom message models defined somewhere besides kernel_sidecar.messages
+    # custom message models defined somewhere besides kernel_sidecar.models.messages
     # should be type: Annotated[Union[models...], Field(discriminator='msg_type')]
     _handler_timeout: float = None  # optional timeout when awaiting Action handlers
 
@@ -56,11 +46,13 @@ class Kernel:
         self.kc.load_connection_info(connection_info)
 
         self.status: messages.KernelStatus = None
-        self.actions: dict[str, actions.KernelActionBase] = {}
+        self.actions: dict[str, actions.KernelAction] = {}
 
         self.kc.start_channels()
 
-        # message queue, raw data (dict) from all zmq channels drop into here
+        # message queue, raw data (dict) from all zmq channels gets dropped into here
+        # and a separate asyncio.Task picks them up off the queue to pass into the
+        # right Action for handling callbacks
         self.mq = asyncio.Queue()
 
         # Keep track of tasks to cancel while shutting down
@@ -68,83 +60,104 @@ class Kernel:
         self.channel_watching_tasks: List[asyncio.Task] = []
         self.channel_watcher_parent_tasks: List[asyncio.Task] = []
 
-    def send_stdin(self, value: str) -> None:
-        msg: TypedJupyterClientMessage = self.kc.session.msg("input_reply")
-        msg["content"]["value"] = value
-        try:
-            self.kc.stdin_channel.send(msg)
-        except Exception:
-            logger.exception("Error sending stdin")
+    def send(self, action: actions.KernelAction) -> actions.KernelAction:
+        if action.sent:
+            raise RuntimeError(f"{action} already sent to Kernel")
 
-    def request(self, action: actions.KernelActionBase) -> actions.KernelActionBase:
-        """
-        Build a kernel_client.session.msg request dictionary using parameters from the Action model
-        and send that request to the kernel.
+        if action.msg_id in self.actions:
+            raise RuntimeError(f"Already tracking reply routing for {action.msg_id=}")
 
-        The msg_id from the request dictionary will be set on the Action, and any observed messages
-        from ZMQ with a parent_header.msg_id matching that id will be delegated to the Action for
-        handling.
-        """
-        # Build request dictionary using jupyter_client, passing in msg_type from action
-        # and content, header, metadata from action.request
-        msg: TypedJupyterClientMessage = self.kc.session.msg(action.request_msg_type)
-
-        # msg_id is generated while creating the request dict, set msg_id on the Action model
-        msg_id = msg["msg_id"]
-        action.msg_id = msg_id
-
-        # update the msg dictionary with any content / header / metadata from the Action model
-        msg["content"].update(action.request_content.dict())
-        msg["metadata"].update(action.request_metadata.dict())
-        msg["header"].update(action.request_header.dict(exclude_unset=True))
-
-        # Add to our internal dict for message routing (parent_header.msg_id -> action handlers)
-        self.actions[msg_id] = action
+        # Update the .actions dictionary so that we route any observed messages coming to us
+        # over ZMQ into this action for handling callbacks
+        self.actions[action.msg_id] = action
 
         # Send the request over the appropriate zmq channel
         try:
-            channel: ZMQSocketChannel = getattr(self.kc, f"{action.request_channel}_channel")
-            channel.send(msg)
-            logger.info("Sent request to kernel", msg=pprint.pformat(msg))
+            channel: ZMQSocketChannel = getattr(self.kc, f"{action.request._channel}_channel")
+            channel.send(action.request.dict())
+            action.sent = True
+            logger.debug("Sent request to kernel", extra={"body": action.request.dict()})
         except Exception as e:
-            logger.exception("Error sending message", msg=msg)
+            logger.exception("Error sending message", extra={"body": action.request.dict()})
             raise e
         return action
 
-    def kernel_info_request(self) -> actions.KernelInfoAction:
-        return self.request(actions.KernelInfoAction())
+    def kernel_info_request(
+        self, handlers: List[actions.HandlerType] = None
+    ) -> actions.KernelAction:
+        req = requests.KernelInfoRequest()
+        action = actions.KernelAction(request=req, handlers=handlers)
+        return self.send(action)
 
-    def execute_request(self, code: str) -> actions.ExecuteAction:
-        action = actions.ExecuteAction()
-        action.request_content.code = code
-        return self.request(action)
+    def execute_request(
+        self, code: str, silent: bool = False, handlers: List[actions.HandlerType] = None
+    ) -> actions.KernelAction:
+        req = requests.ExecuteRequest(content={"code": code, "silent": silent})
+        action = actions.KernelAction(request=req, handlers=handlers)
+        return self.send(action)
 
     def complete_request(
-        self, code: str, cursor_pos: Optional[int] = None
-    ) -> actions.CompleteAction:
-        action = actions.CompleteAction()
-        action.request_content.code = code
-        action.request_content.cursor_pos = cursor_pos
-        return self.request(action)
+        self,
+        code: str,
+        cursor_pos: Optional[int] = None,
+        handlers: List[actions.HandlerType] = None,
+    ) -> actions.KernelAction:
+        if cursor_pos is None:
+            cursor_pos = len(code)
+        req = requests.CompleteRequest(content={"code": code, "cursor_pos": cursor_pos})
+        action = actions.KernelAction(request=req, handlers=handlers)
+        return self.send(action)
 
-    def interrupt_request(self) -> actions.InterruptAction:
-        return self.request(actions.InterruptAction())
+    def interrupt_request(self, handlers: List[actions.HandlerType] = None) -> actions.KernelAction:
+        req = requests.InterruptRequest()
+        action = actions.KernelAction(request=req, handlers=handlers)
+        return self.send(action)
 
     def comm_open_request(
-        self, target_name: str, data: Optional[dict] = None
-    ) -> actions.CommOpenAction:
-        action = actions.CommOpenAction()
-        action.request_content.target_name = target_name
-        if data:
-            action.request_content.data = data
-        return self.request(action)
+        self,
+        target_name: str,
+        data: Optional[dict] = None,
+        handlers: List[actions.HandlerType] = None,
+    ) -> actions.KernelAction:
+        if data is None:
+            data = {}
+        req = requests.CommOpen(content={"target_name": target_name, "data": data})
+        action = actions.KernelAction(request=req, handlers=handlers)
+        return self.send(action)
 
-    def comm_msg_request(self, comm_id: str, data: Optional[dict] = None) -> actions.CommMsgAction:
-        action = actions.CommMsgAction()
-        action.request_content.comm_id = comm_id
-        if data:
-            action.request_content.data = data
-        return self.request(action)
+    def comm_msg_request(
+        self,
+        comm_id: str,
+        data: Optional[dict] = None,
+        handlers: List[actions.HandlerType] = None,
+    ) -> actions.KernelAction:
+        req = requests.CommMsg(content={"comm_id": comm_id, "data": data})
+        action = actions.KernelAction(request=req, handlers=handlers)
+        return self.send(action)
+
+    def comm_close_request(
+        self, comm_id: str, handlers: List[actions.HandlerType] = None
+    ) -> actions.KernelAction:
+        req = requests.CommClose(content={"comm_id": comm_id})
+        action = actions.KernelAction(request=req, handlers=handlers)
+        return self.send(action)
+
+    def send_stdin(self, value: str) -> None:
+        """
+        Send content over stdin chanenl.
+
+        If an execute_request includes input() in its source, the Kernel will emit an input_request
+        and expect to see an input_reply come back from sidecar -> kernel over stdin channel before
+        continuing with other shell channel handling (e.g. more execute requests).
+
+        This is not wrapped as an Action because there are no replies for input_reply (if anything
+        the Sidecar is replying to the Kernel's input_request)
+        """
+        req = requests.InputReply(content={"value": value})
+        try:
+            self.kc.stdin_channel.send(req.dict())
+        except Exception:
+            logger.exception("Error sending input_reply to stdin", extra={"body": req.dict()})
 
     async def watch_channel(self, channel_name: str):
         """
@@ -153,8 +166,7 @@ class Kernel:
 
         Cycles the ZMQ connection if it's lost.
         """
-        structlog.contextvars.bind_contextvars(channel_name=channel_name)
-        logger.info("Channel watcher started")
+        logger.debug("Channel watcher started", extra={"channel": channel_name})
         channel: ZMQSocketChannel = getattr(self.kc, f"{channel_name}_channel")
 
         message_task = asyncio.create_task(self._watch_channel_for_messages(channel))
@@ -175,11 +187,15 @@ class Kernel:
             if task.exception():
                 raise task.exception()
 
-        logger.info("Cycling channel based on task ending")
+        logger.debug("Cycling channel based on task ending", extra={"channel": channel_name})
         self.channel_watching_tasks.remove(message_task)
         self.channel_watching_tasks.remove(status_task)
 
-        setattr(self.kc, f"_{channel}", None)
+        # The .<channel_name>_channel properties check if ._<channel_name>_channel attribute
+        # is None or not. If it is, it starts the connection on that channel. Setting this attr
+        # back to None will force a reconnect next time the property is accessed.
+        setattr(self.kc, f"_{channel_name}_channel", None)
+        return await self.watch_channel(channel_name)
 
     async def _watch_channel_for_status(self, monitor_socket: zmq.Socket):
         """
@@ -210,7 +226,7 @@ class Kernel:
                     await asyncio.sleep(0.001)
                     continue
                 raw_msg: dict = await channel.get_msg()
-                logger.debug("Received message from zmq", raw_msg=pprint.pformat(raw_msg))
+                logger.debug("Message received on zmq", extra={"body": raw_msg})
                 self.mq.put_nowait(raw_msg)
             except asyncio.CancelledError:
                 break
@@ -232,21 +248,19 @@ class Kernel:
                 if not raw_msg.get("parent_header"):
                     await self.handle_missing_parent_msg_id(raw_msg)
                     continue
-                msg = pydantic.parse_obj_as(messages.Message, raw_msg)
-                if msg.msg_type == "status":
-                    self.status = msg.content.execution_state
 
-                if msg.parent_msg_id not in self.actions:
+                msg = pydantic.parse_obj_as(messages.Message, raw_msg)
+                if msg.parent_header.msg_id not in self.actions:
                     await self.handle_untracked_action(msg)
                     continue
 
-                action = self.actions[msg.parent_msg_id]
-                await asyncio.wait_for(action.handle_message(msg), timeout=1)
+                action = self.actions[msg.parent_header.msg_id]
+                await asyncio.wait_for(action.handle_message(msg), timeout=self._handler_timeout)
 
             except pydantic.ValidationError as e:
                 await self.handle_unparseable_message(raw_msg, e)
             except asyncio.CancelledError:
-                logger.info("Message processor cancelled")
+                logger.debug("Message processing Task cancelled")
                 break
             except Exception as e:
                 logger.exception("Error while handling message")
@@ -255,28 +269,31 @@ class Kernel:
     async def handle_missing_parent_msg_id(self, raw_msg: dict):
         """
         Almost all messages should have a parent_header.msg_id which we can use to delegate to
-        Action handlers. Any messages without a parent_header msg_id should be documented and
-        dealt with here.
-        """
-        if (
-            raw_msg["msg_type"] == "status"
-            and raw_msg["content"].get("execution_state") == "starting"
-        ):
-            logger.info("Observed Kernel starting status message")
-            self.status = messages.KernelStatus.starting
-        else:
-            logger.warning("Got message with missing parent header message id", raw_msg=raw_msg)
+        Action handlers. Any messages without a parent_header msg_id can be logged or handled
+        here.
 
-    async def handle_unparseable_message(self, raw_msg: dict, error: pydantic.ValidationError):
-        logger.warning("Failed to parse message from kernel", raw_msg=raw_msg, error=error)
+        One notable example of a message with no parent header is the kernel status for execution
+        state: "starting". If your app is tracking Kernel State, you probably want to override
+        this method in a subclass to set "starting" state.
+        """
+        pass
 
     async def handle_untracked_action(self, msg: messages.Message):
         """
         In theory if we're the only client talking to a kernel, we shouldn't get into this method.
+        Override in subclasses for logging or handling of untracked messages.
         """
-        logger.warning("Got message with untracked parent header message id", msg=msg)
+        pass
 
-    async def __aenter__(self) -> "Kernel":
+    async def handle_unparseable_message(self, raw_msg: dict, error: pydantic.ValidationError):
+        """
+        Override in subclasses for logging or handling of unparseable messages.
+        """
+        pass
+
+    async def __aenter__(self) -> "SidecarKernelClient":
+        # General asyncio comment: make sure tasks always have a reference (assigned to variable or
+        # being awaited) or they might be garbage collected while running.
         for channel in ["iopub", "shell", "control", "stdin"]:
             task = asyncio.create_task(self.watch_channel(channel))
             self.channel_watcher_parent_tasks.append(task)
@@ -284,11 +301,13 @@ class Kernel:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        # Exiting the async context / general cleanup consists of:
+        # - cancel all tasks
+        # - stop zmq channel connections
         for task in self.channel_watcher_parent_tasks:
             task.cancel()
         for task in self.channel_watching_tasks:
             task.cancel()
         if self.mq_task:
             self.mq_task.cancel()
-        self.kc.stop_channels()
         self.kc.stop_channels()

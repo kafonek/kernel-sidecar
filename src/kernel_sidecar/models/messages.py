@@ -10,6 +10,8 @@ into Message models defined here, and delegating handling to the appropriate Act
 that represents the original request and subsequent responses by parent_header.msg_id.
 
 Use:
+import datetime
+from dateutil import tzutc
 
 raw_data = {'buffers': [],
             'content': {'execution_state': 'idle'},
@@ -29,35 +31,38 @@ raw_data = {'buffers': [],
                             'username': 'kafonek',
                             'version': '5.3'}}
 
-msg = pydantic.parse_obj_as(Message, raw_data)
+import pydantic
+from kernel_sidecar.models import messages
+
+msg = pydantic.parse_obj_as(messages.Message, raw_data)
 msg
->>> StatusMessage(
-        buffers=[],
-        content=StatusContent(execution_state=<KernelStatus.idle: 'idle'>),
-        header=Header(
-            date=datetime.datetime(2023, 1, 20, 13, 33, 48, 25739, tzinfo=tzutc()),
-            msg_id="054eb8a8-080c87e74cf4cd9f28620307_12527_9",
-            msg_type="status",
-            session="054eb8a8-080c87e74cf4cd9f28620307",
-            username="kafonek",
-            version="5.3",
-        ),
-        metadata={},
+>>> Status(
+    buffers=[],
+    content=StatusContent(execution_state="idle"),
+    header=Header(
+        date=datetime.datetime(2023, 1, 20, 13, 33, 48, 25739, tzinfo=tzutc()),
         msg_id="054eb8a8-080c87e74cf4cd9f28620307_12527_9",
         msg_type="status",
-        parent_header=Header(
-            date=datetime.datetime(2023, 1, 20, 13, 33, 47, 775780, tzinfo=tzutc()),
-            msg_id="580af966-34f6ef93a033a226a5205abb_12524_2",
-            msg_type="complete_request",
-            session="580af966-34f6ef93a033a226a5205abb",
-            username="kafonek",
-            version="5.3",
-        ),
-    )
-"""  # noqa: E501
+        session="054eb8a8-080c87e74cf4cd9f28620307",
+        username="kafonek",
+        version="5.3",
+    ),
+    metadata=BaseModel(),
+    msg_id="054eb8a8-080c87e74cf4cd9f28620307_12527_9",
+    msg_type="status",
+    parent_header=Header(
+        date=datetime.datetime(2023, 1, 20, 13, 33, 47, 775780, tzinfo=tzutc()),
+        msg_id="580af966-34f6ef93a033a226a5205abb_12524_2",
+        msg_type="complete_request",
+        session="580af966-34f6ef93a033a226a5205abb",
+        username="kafonek",
+        version="5.3",
+    ),
+)
+"""
 import enum
 from datetime import datetime
-from typing import Annotated, Any, List, Literal, Union
+from typing import Annotated, Any, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -74,19 +79,15 @@ class Header(BaseModel):
 
 class MessageBase(BaseModel):
     buffers: list = Field(default_factory=list)
-    content: dict  # may be overridden in submodels
+    content: BaseModel = Field(default_factory=BaseModel)
     header: Header
-    metadata: dict = Field(default_factory=dict)
+    metadata: BaseModel = Field(default_factory=BaseModel)
     msg_id: str
     msg_type: str  # must be overwritten as Literal in submodel
     parent_header: Header
 
-    @property
-    def parent_msg_id(self):
-        return self.parent_header.msg_id
 
-
-# Status
+# https://jupyter-client.readthedocs.io/en/stable/messaging.html#kernel-status
 class KernelStatus(str, enum.Enum):
     busy = "busy"
     idle = "idle"
@@ -100,39 +101,64 @@ class StatusContent(BaseModel):
         use_enum_values = True
 
 
-class StatusMessage(MessageBase):
+class Status(MessageBase):
     msg_type: Literal["status"]
     content: StatusContent
 
 
-# Any sort of error
+# For normal execution requests, the reply order is:
+#
+# <frontend sends execute_request (shell)>
+# - status (iopub): kernel busy
+# - execute_input (iopub): broadcast code that was submitted
+# - outputs (iopub): execute_result, stream, etc
+# - execute_result (shell): status / execution count
+# - status (iopub): kernel idle
+#
+# (the order of which messages we receive from different channels isn't guaranteed,
+#  e.g. we may see status idle on iopub before or after execute_result on shell)
+#
+# https://jupyter-client.readthedocs.io/en/stable/messaging.html#request-reply
+
+
+class ExecuteInputContent(BaseModel):
+    code: str
+    execution_count: int
+
+
+class ExecuteInput(MessageBase):
+    msg_type: Literal["execute_input"]
+    content: ExecuteInputContent
+
+
+# Separate status enum for Cell state vs Kernel state, these values come back as part
+# of `<action>_reply` messages rather than in their own `status` message type
+class CellStatus(str, enum.Enum):
+    ok = "ok"
+    error = "error"
+    aborted = "aborted"
+
+
+# "When status is ‘error’, the usual content of a successful reply should be omitted,
+# instead the following fields should be present:"
+# https://jupyter-client.readthedocs.io/en/stable/messaging.html#request-reply
 class ErrorContent(BaseModel):
     ename: str
     evalue: str
     traceback: List[str]
 
 
-class ErrorMessage(MessageBase):
+class Error(MessageBase):
     msg_type: Literal["error"]
     content: ErrorContent
 
 
-# execute_*
-# execute_input
-class ExecuteInputContent(BaseModel):
-    code: str
-    execution_count: int
-
-
-class ExecuteInpuMessage(MessageBase):
-    msg_type: Literal["execute_input"]
-    content: ExecuteInputContent
-
-
+# "ok" status content --
+#
 # "Payloads" in execute_request are deprecated according to docs but
 # still used pretty widely
-class Pager(BaseModel):
-    """Pager is when you use "??" to show help text for a function/object"""
+class Page(BaseModel):
+    """Page is when you use "??" to show help text for a function/object"""
 
     source: Literal["page"] = "page"
     data: dict  # mimebundle, must include text/plain
@@ -150,15 +176,7 @@ class SetNextInput(BaseModel):
     replace: bool
 
 
-Payload = Annotated[Union[Pager, SetNextInput], Field(discriminator="source")]
-
-
-# execute_reply
-# - Content can have different schemas based on the status (ok, aborted, error)
-class CellStatus(str, enum.Enum):
-    ok = "ok"
-    error = "error"
-    aborted = "aborted"
+Payload = Annotated[Union[Page, SetNextInput], Field(discriminator="source")]
 
 
 class ExecuteReplyOkContent(BaseModel):
@@ -198,7 +216,7 @@ ExecuteReplyContent = Annotated[
 ]
 
 
-class ExecuteReplyMessage(MessageBase):
+class ExecuteReply(MessageBase):
     msg_type: Literal["execute_reply"]
     content: ExecuteReplyContent
 
@@ -214,7 +232,7 @@ class ExecuteResultContent(BaseModel):
     metadata: dict = Field(default_factory=dict)
 
 
-class ExecuteResultMessage(MessageBase):
+class ExecuteResult(MessageBase):
     msg_type: Literal["execute_result"]
     content: ExecuteResultContent
 
@@ -233,7 +251,7 @@ class StreamContent(BaseModel):
         use_enum_values = True
 
 
-class StreamMessage(MessageBase):
+class Stream(MessageBase):
     msg_type: Literal["stream"]
     content: StreamContent
 
@@ -245,7 +263,7 @@ class DisplayDataContent(BaseModel):
     transient: dict = Field(default_factory=dict)
 
 
-class DisplayDataMessage(MessageBase):
+class DisplayData(MessageBase):
     msg_type: Literal["display_data"]
     content: DisplayDataContent
 
@@ -254,19 +272,19 @@ class UpdateDisplayDataContent(DisplayDataContent):
     output_type: Literal["update_display_data"] = "update_display_data"
 
 
-class UpdateDisplayDataMessage(MessageBase):
+class UpdateDisplayData(MessageBase):
     msg_type: Literal["update_display_data"]
     content: UpdateDisplayDataContent
 
 
-# Comms
+# Comms - https://jupyter-client.readthedocs.io/en/stable/messaging.html#custom-messages
 class CommOpenContent(BaseModel):
     comm_id: str
     target_name: str
     data: Any
 
 
-class CommOpenMessage(MessageBase):
+class CommOpen(MessageBase):
     msg_type: Literal["comm_open"]
     content: CommOpenContent
 
@@ -276,7 +294,7 @@ class CommMsgContent(BaseModel):
     data: Any
 
 
-class CommMsgMessage(MessageBase):
+class CommMsg(MessageBase):
     msg_type: Literal["comm_msg"]
     content: CommMsgContent
 
@@ -286,7 +304,7 @@ class CommCloseContent(BaseModel):
     data: Any
 
 
-class CommCloseMessage(MessageBase):
+class CommClose(MessageBase):
     msg_type: Literal["comm_close"]
     content: CommCloseContent
 
@@ -295,12 +313,12 @@ class CommInfoReplyContent(BaseModel):
     comms: dict  # {comm-id: {target_name: str}}
 
 
-class CommInfoReplyMessage(MessageBase):
+class CommInfoReply(MessageBase):
     msg_type: Literal["comm_info_reply"]
     content: CommInfoReplyContent
 
 
-# Kernel info
+# Kernel info - https://jupyter-client.readthedocs.io/en/stable/messaging.html#kernel-info
 class LanguageInfo(BaseModel):
     name: str
     version: str
@@ -319,10 +337,10 @@ class KernelInfoReplyContent(BaseModel):
     language_info: LanguageInfo
     protocol_version: str
     status: str
-    debugger: bool = False
+    debugger: Optional[bool] = None
 
 
-class KernelInfoReplyMessage(MessageBase):
+class KernelInfoReply(MessageBase):
     msg_type: Literal["kernel_info_reply"]
     content: KernelInfoReplyContent
 
@@ -335,7 +353,7 @@ class InspectReplyContent(BaseModel):
     metadata: dict
 
 
-class InspectReplyMessage(MessageBase):
+class InspectReply(MessageBase):
     msg_type: Literal["inspect_reply"]
     content: InspectReplyContent
 
@@ -349,7 +367,7 @@ class CompleteReplyContent(BaseModel):
     metadata: dict
 
 
-class CompleteReplyMessage(MessageBase):
+class CompleteReply(MessageBase):
     msg_type: Literal["complete_reply"]
     content: CompleteReplyContent
 
@@ -360,13 +378,13 @@ class HistoryReplyContent(BaseModel):
     history: list[tuple] = Field(default_factory=list)
 
 
-class HistoryReplyMessage(BaseModel):
+class HistoryReply(BaseModel):
     msg_type: Literal["history_reply"]
     content: HistoryReplyContent
 
 
 # Interrupts
-class InterruptReplyMessage(MessageBase):
+class InterruptReply(MessageBase):
     msg_type: Literal["interrupt_reply"]
 
 
@@ -376,46 +394,92 @@ class ShutdownContent(BaseModel):
     restart: bool
 
 
-class ShutdownMessage(MessageBase):
+class Shutdown(MessageBase):
     msg_type: Literal["shutdown_reply"]
     content: ShutdownContent
 
 
-# Input Request
+# Debug reply - https://jupyter-client.readthedocs.io/en/stable/messaging.html#debug-request
+class DumpCellBody(BaseModel):
+    sourcePath: str
+
+
+class DumpCell(BaseModel):
+    type: Literal["response"]
+    command: Literal["dumpCell"]
+    success: bool
+    body: DumpCellBody
+
+
+class Breakpoints(BaseModel):
+    source: str
+    breakpoints: List[str]
+
+
+class DebugInfoBody(BaseModel):
+    isStarted: bool
+    hashMethod: str
+    hashSeed: str
+    tmpFilePrefix: str
+    tmpFileSuffix: str
+    breakpoints: List[Breakpoints]
+    stoppedThreads: List[int]
+    richRendering: bool
+    exceptionPaths: List[str]
+
+
+class DebugInfo(BaseModel):
+    type: Literal["response"]
+    command: Literal["debugInfo"]
+    success: bool
+    body: DebugInfoBody
+
+
+DebugReplyContent = Annotated[Union[DumpCell, DebugInfo], Field(alias="command")]
+
+
+class DebugReply(MessageBase):
+    msg_type: Literal["debug_reply"]
+    content: DebugReplyContent
+
+
+# Input (stdin)
 class InputRequestContent(BaseModel):
     prompt: str
     password: bool
 
 
-class InputRequestMessage(MessageBase):
+class InputRequest(MessageBase):
     msg_type: Literal["input_request"]
     content: InputRequestContent
 
 
 # See module docstring. Use:
 # msg = pydantic.parse_obj_as(Message, raw_dict_from_zmq)
-# msg will be one of the specific message types in the Union below.
+# msg will be one of the specific message types in the Union below complete with its own
+# custom content or other nested models.
 Message = Annotated[
     Union[
-        StatusMessage,
-        ErrorMessage,
-        ExecuteInpuMessage,
-        ExecuteReplyMessage,
-        ExecuteResultMessage,
-        StreamMessage,
-        DisplayDataMessage,
-        UpdateDisplayDataMessage,
-        CommOpenMessage,
-        CommMsgMessage,
-        CommInfoReplyMessage,
-        CommCloseMessage,
-        KernelInfoReplyMessage,
-        InspectReplyMessage,
-        CompleteReplyMessage,
-        HistoryReplyMessage,
-        InterruptReplyMessage,
-        ShutdownMessage,
-        InputRequestMessage,
+        Status,
+        ExecuteInput,
+        ExecuteResult,
+        Stream,
+        DisplayData,
+        UpdateDisplayData,
+        ExecuteReply,
+        Error,
+        CommOpen,
+        CommMsg,
+        CommClose,
+        CommInfoReply,
+        KernelInfoReply,
+        InspectReply,
+        CompleteReply,
+        HistoryReply,
+        InterruptReply,
+        Shutdown,
+        DebugReply,
+        InputRequest,
     ],
     Field(discriminator="msg_type"),
 ]

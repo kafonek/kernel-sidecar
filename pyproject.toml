@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "kernel-sidecar"
-version = "0.1.5"
+version = "0.2.0"
 description = "A sidecar "
 authors = ["Matt Kafonek <matt.kafonek@noteable.io>"]
 readme = "README.md"
@@ -12,7 +12,6 @@ repository = "https://github.com/kafonek/kernel-sidecar"
 python = "^3.8"
 jupyter-client = ">=7.3.4"
 pydantic = "^1.10.4"
-structlog = "^22.3.0"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -23,6 +22,8 @@ pytest-asyncio = "^0.20.3"
 ipykernel = "^6.20.2"
 notebook = "^6.5.2"
 ipywidgets = "^8.0.4"
+jupyterlab = "^3.6.1"
+structlog = "^22.3.0"
 
 
 [tool.poetry.group.docs.dependencies]
