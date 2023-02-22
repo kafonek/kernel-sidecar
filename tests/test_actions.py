@@ -266,7 +266,8 @@ async def test_comm(kernel: SidecarKernelClient):
     get_ipython().kernel.comm_manager.register_target("test_comm", comm_fn)
     """
     )
-    await kernel.execute_request(code)
+    setup_action = kernel.execute_request(code)
+    await setup_action
 
     handler1 = DebugHandler()  # for comm open
     handler2 = DebugHandler()  # for comm msg
