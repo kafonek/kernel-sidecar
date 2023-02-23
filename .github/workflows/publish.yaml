@@ -14,9 +14,12 @@ jobs:
         shell: bash
         run: curl -sSL https://install.python-poetry.org | POETRY_VERSION=1.2.2 python3 -
 
-      - name: Set up Python ${{ matrix.python-version }}
+      # Build "pure python" wheels from the minimum supported version (although building with 
+      # higher versions should also work just fine) -- no need to build wheels with different
+      # versions since this doesn't have C-extensions / Rust compilation or other craziness
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
+          python-version: "3.9"
 
       - run: poetry publish --build -u __token__ -p ${{ secrets.PYPI_TOKEN }}
