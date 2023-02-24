@@ -1,12 +1,12 @@
 """
 Pydantic models for requests that will be sent to the Kernel.
 
-Most requests can be made using convenience functions on the SidecarKernelClient,
+Most requests can be made using convenience functions on the KernelSidecarClient,
 e.g. action = kernel.kernel_info_request(); await action
 
 Example use creating a Request and Action manually, then sending with kernel.send:
 
-async with kernel_sidecar.SidecarKernelClient(connection_info) as kernel:
+async with kernel_sidecar.KernelSidecarClient(connection_info) as kernel:
     async def cb(msg: messages.Message):
         print(msg)
 

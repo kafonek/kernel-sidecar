@@ -3,7 +3,7 @@ import logging
 import pytest
 import structlog
 from jupyter_client import AsyncKernelClient, manager
-from kernel_sidecar.kernel import SidecarKernelClient
+from kernel_sidecar.client import KernelSidecarClient
 
 
 @pytest.fixture
@@ -26,8 +26,8 @@ async def ipykernel() -> dict:
 
 
 @pytest.fixture
-async def kernel(ipykernel: dict) -> SidecarKernelClient:
-    async with SidecarKernelClient(connection_info=ipykernel) as kernel:
+async def kernel(ipykernel: dict) -> KernelSidecarClient:
+    async with KernelSidecarClient(connection_info=ipykernel) as kernel:
         yield kernel
 
 

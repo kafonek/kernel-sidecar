@@ -27,11 +27,11 @@ pip install kernel-sidecar
 ```
 
 # Key Concepts
-## SidecarKernelClient
+## KernelSidecarClient
 
 A manager that uses `jupyter_client` under the hood to create ZMQ connections and watch for messages coming in over different ZMQ channels (`iopub`, `shell`, etc. An important assumption here is that `kernel-sidecar` is the only client talking to the Kernel, which means every message observed coming from the Kernel should be a reply (based on `parent_header_msg.msg_id`) to a request sent from this client.
 
-When the `SidecarKernelClient` send a request to the Kernel, it is wrapped in an `KernelAction` class. Every message received from the Kernel is delegated to the requesting Action and triggers callbacks attached to the Action class.
+When the `KernelSidecarClient` send a request to the Kernel, it is wrapped in an `KernelAction` class. Every message received from the Kernel is delegated to the requesting Action and triggers callbacks attached to the Action class.
 
 ## Actions
 
@@ -39,7 +39,7 @@ Actions in `kernel-sidecar` encompass a request-reply cycle, including an `await
 
 In a nutshell, an `actions.KernelAction` takes in a `requests.Request` and zero-to-many `handlers.Handler` subclasses (or just `async functions`) and creates an `awaitable` instance. `kernel.send(action)` submits the Request over ZMQ, and registers the Action so that all observed messages get routed to that Action to be handled by the Handlers/callbacks.
 
-Most of the time, you should be able to just use convience functions in the `SidecarKernelClient` class to create the actions. See `tests/test_actions.py` for many examples of using Actions and Handlers.
+Most of the time, you should be able to just use convience functions in the `KernelSidecarClient` class to create the actions. See `tests/test_actions.py` for many examples of using Actions and Handlers.
 
 ## Models
 

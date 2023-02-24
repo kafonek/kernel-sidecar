@@ -4,12 +4,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 from kernel_sidecar import actions
+from kernel_sidecar.client import KernelSidecarClient
 from kernel_sidecar.handlers import DebugHandler
-from kernel_sidecar.kernel import SidecarKernelClient
 from kernel_sidecar.models import messages, requests
 
 
-async def test_handlers(kernel: SidecarKernelClient):
+async def test_handlers(kernel: KernelSidecarClient):
     """
     Show that we can attach multiple handlers to a single action.
      - As Handler class/subclass instances
@@ -29,7 +29,7 @@ async def test_handlers(kernel: SidecarKernelClient):
     assert handler3.call_count == 3
 
 
-async def test_kernel_info(kernel: SidecarKernelClient):
+async def test_kernel_info(kernel: KernelSidecarClient):
     """
     Show that the kernel.kernel_info_request() helper method builds an appropriate KernelInfoRequest
     and we see the expected results in an attached handler.
@@ -43,7 +43,7 @@ async def test_kernel_info(kernel: SidecarKernelClient):
     assert kernel_info_reply.content.status == "ok"
 
 
-async def test_execute_statement(kernel: SidecarKernelClient):
+async def test_execute_statement(kernel: KernelSidecarClient):
     """
     Code that returns a statement as the last line should have that output show up in the content
     of the execute_result message.
@@ -62,7 +62,7 @@ async def test_execute_statement(kernel: SidecarKernelClient):
     assert execute_result.content.data == {"text/plain": "2"}
 
 
-async def test_execute_stream(kernel: SidecarKernelClient):
+async def test_execute_stream(kernel: KernelSidecarClient):
     """
     Code that prints to stdout should show up in the content of the stream message.
     """
@@ -81,7 +81,7 @@ async def test_execute_stream(kernel: SidecarKernelClient):
     assert stream.content.text == "hello world\n"
 
 
-async def test_execute_display_data(kernel: SidecarKernelClient):
+async def test_execute_display_data(kernel: KernelSidecarClient):
     """
     Code that uses the display() function should show up in the content of the display_data message.
     """
@@ -105,7 +105,7 @@ async def test_execute_display_data(kernel: SidecarKernelClient):
     assert display_data.content.data == {"text/plain": "'hello world'"}
 
 
-async def test_execute_display_update(kernel: SidecarKernelClient):
+async def test_execute_display_update(kernel: KernelSidecarClient):
     """
     Displaying an object with a display_id should allow us to update that display with new content,
     which will come in through an update_display_data message.
@@ -136,7 +136,7 @@ async def test_execute_display_update(kernel: SidecarKernelClient):
     assert update_display_data.content.transient == {"display_id": "test_display"}
 
 
-async def test_execute_error(kernel: SidecarKernelClient):
+async def test_execute_error(kernel: KernelSidecarClient):
     """
     Code that raises an exception should show up as an error message type with the traceback
     in the content.
@@ -156,7 +156,7 @@ async def test_execute_error(kernel: SidecarKernelClient):
     assert len(error.content.traceback) > 0
 
 
-async def test_input(kernel: SidecarKernelClient):
+async def test_input(kernel: KernelSidecarClient):
     """
     Show that the kernel.execute_request() helper method builds an appropriate ExecuteRequest
     and we see the expected results in an attached handler.
@@ -184,7 +184,7 @@ async def test_input(kernel: SidecarKernelClient):
     }
 
 
-async def test_complete_request(kernel: SidecarKernelClient):
+async def test_complete_request(kernel: KernelSidecarClient):
     """
     Show that the kernel.complete_request() helper method builds an appropriate CompleteRequest
     and we see the expected results in an attached handler.
@@ -208,7 +208,7 @@ async def test_complete_request(kernel: SidecarKernelClient):
     assert "bar" in complete_reply.content.matches
 
 
-async def test_interrupt(kernel: SidecarKernelClient):
+async def test_interrupt(kernel: KernelSidecarClient):
     """
     Show that the kernel.interrupt() helper method sends an interrupt message. Running execute
     requests should come back as status "error" with an error message of "KeyboardInterrupt".
@@ -231,7 +231,7 @@ async def test_interrupt(kernel: SidecarKernelClient):
     assert handler3.counts == {"status": 2, "interrupt_reply": 1}
 
 
-async def test_comm(kernel: SidecarKernelClient):
+async def test_comm(kernel: KernelSidecarClient):
     """
     Show that we can create a Comm on the Kernel side, then open a Comm from the sidecar and
     send a Comm msg from sidecar to Kernel with expected response from Kernel.
@@ -272,7 +272,7 @@ async def test_comm(kernel: SidecarKernelClient):
     assert handler3.counts == {"status": 2}
 
 
-async def test_ipywidgets(kernel: SidecarKernelClient):
+async def test_ipywidgets(kernel: KernelSidecarClient):
     """
     Show how to capture comm messages emitted by ipywidgets
     """

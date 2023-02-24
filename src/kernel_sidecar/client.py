@@ -24,7 +24,7 @@ from zmq.utils.monitor import recv_monitor_message
 logger = logging.getLogger(__name__)
 
 
-class SidecarKernelClient:
+class KernelSidecarClient:
     """
     Primary interface between our Sidecar and a Kernel.
      - Manages the zmq connections between Sidecar and Kernel
@@ -326,7 +326,7 @@ class SidecarKernelClient:
     async def handle_zmq_disconnect(self, channel_name: str):
         pass
 
-    async def __aenter__(self) -> "SidecarKernelClient":
+    async def __aenter__(self) -> "KernelSidecarClient":
         # General asyncio comment: make sure tasks always have a reference (assigned to variable or
         # being awaited) or they might be garbage collected while running.
         for channel in ["iopub", "shell", "control", "stdin"]:

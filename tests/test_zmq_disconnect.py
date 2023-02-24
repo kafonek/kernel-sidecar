@@ -2,11 +2,11 @@ import collections
 from typing import Optional
 
 from jupyter_client import KernelConnectionInfo
+from kernel_sidecar.client import KernelSidecarClient
 from kernel_sidecar.handlers import DebugHandler
-from kernel_sidecar.kernel import SidecarKernelClient
 
 
-class DisconnectHandlingClient(SidecarKernelClient):
+class DisconnectHandlingClient(KernelSidecarClient):
     def __init__(
         self,
         connection_info: KernelConnectionInfo,
