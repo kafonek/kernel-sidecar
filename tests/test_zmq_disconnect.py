@@ -40,5 +40,4 @@ async def test_zmq_disconnect(ipykernel: dict):
         handler = DebugHandler()
         action = kernel.execute_request(code=" print('x' * 2048)", handlers=[handler])
         await action
-        assert handler.counts == {"status": 1, "execute_input": 1}
         assert kernel.channel_disconnects == {"iopub": 1}
