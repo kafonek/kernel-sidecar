@@ -1,30 +1,12 @@
 import asyncio
-import collections
 import textwrap
 from unittest.mock import AsyncMock
 
 import pytest
 from kernel_sidecar import actions
-from kernel_sidecar.handlers import Handler
+from kernel_sidecar.handlers import DebugHandler
 from kernel_sidecar.kernel import SidecarKernelClient
 from kernel_sidecar.models import messages, requests
-
-
-class DebugHandler(Handler):
-    """
-    Class used in tests to assert which types of messages we saw associated with a request
-    and to capture the last message per type (e.g. `stream` or `execute_result`) to assert
-    content of that reply.
-    """
-
-    def __init__(self):
-        self.counts = collections.defaultdict(int)
-        self.last_msg_by_type = collections.defaultdict(messages.Message)
-
-    async def unhandled_message(self, msg: messages.Message):
-        # effectively a catch-all for every message type since no other handlers are defined
-        self.counts[msg.msg_type] += 1
-        self.last_msg_by_type[msg.msg_type] = msg
 
 
 async def test_handlers(kernel: SidecarKernelClient):

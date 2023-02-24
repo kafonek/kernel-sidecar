@@ -16,10 +16,10 @@ import pydantic
 import zmq
 from jupyter_client import AsyncKernelClient, KernelConnectionInfo
 from jupyter_client.channels import ZMQSocketChannel
-from zmq.utils.monitor import recv_monitor_message
-
 from kernel_sidecar import actions
 from kernel_sidecar.models import messages, requests
+from zmq.asyncio import Context
+from zmq.utils.monitor import recv_monitor_message
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +41,22 @@ class SidecarKernelClient:
     # should be type: Annotated[Union[models...], Field(discriminator='msg_type')]
     _handler_timeout: float = None  # optional timeout when awaiting Action handlers
 
-    def __init__(self, connection_info: KernelConnectionInfo):
-        self.kc = AsyncKernelClient()
+    def __init__(
+        self,
+        connection_info: KernelConnectionInfo,
+        max_message_size: Optional[int] = None,
+    ):
+        """
+        - connection_info: dict with zmq ports the Kernel has open
+        - max_message_size: optional setting applied to zmq socket configuration so that we'll
+          automatically close the socket if the message is over that size. Useful if the sidecar
+          application has less memory than the Kernel and need to avoid OOM in sidecar from large
+          outputs or other messages coming in from the Kernel
+        """
+        zmq_context = Context()
+        if max_message_size:
+            zmq_context.setsockopt(zmq.SocketOption.MAXMSGSIZE, max_message_size)
+        self.kc = AsyncKernelClient(context=zmq_context)
         self.kc.load_connection_info(connection_info)
 
         self.status: messages.KernelStatus = None
@@ -60,6 +74,19 @@ class SidecarKernelClient:
         self.channel_watching_tasks: List[asyncio.Task] = []
         self.channel_watcher_parent_tasks: List[asyncio.Task] = []
 
+    @property
+    def running_action(self):
+        """
+        Return a best guess at what action the Kernel is handling right now.
+
+        The logic here is that actions is a dict, which is ordered in Python 3.6+, so iterate
+        through them until we find an action that is not done yet. The first non-done action is
+        the one we're looking for.
+        """
+        for action in self.actions.values():
+            if not action.done.is_set():
+                return action
+
     def send(self, action: actions.KernelAction) -> actions.KernelAction:
         if action.sent:
             raise RuntimeError(f"{action} already sent to Kernel")
@@ -67,15 +94,14 @@ class SidecarKernelClient:
         if action.msg_id in self.actions:
             raise RuntimeError(f"Already tracking reply routing for {action.msg_id=}")
 
-        # Update the .actions dictionary so that we route any observed messages coming to us
-        # over ZMQ into this action for handling callbacks
-        self.actions[action.msg_id] = action
-
         # Send the request over the appropriate zmq channel
         try:
             channel: ZMQSocketChannel = getattr(self.kc, f"{action.request._channel}_channel")
             channel.send(action.request.dict())
             action.sent = True
+            # Update the .actions dictionary so that we route any observed messages coming to us
+            # over ZMQ into this action for handling callbacks
+            self.actions[action.msg_id] = action
             logger.debug("Sent request to kernel", extra={"body": action.request.dict()})
         except Exception as e:
             logger.exception("Error sending message", extra={"body": action.request.dict()})
@@ -180,22 +206,28 @@ class SidecarKernelClient:
             [message_task, status_task],
             return_when=asyncio.FIRST_COMPLETED,
         )
+        logger.debug("Cycling channel based on task ending", extra={"channel": channel_name})
 
+        # Reconnect ASAP
+        # The .<channel_name>_channel properties check if ._<channel_name>_channel attribute
+        # is None or not. If it is, it starts the connection on that channel. Setting this attr
+        # back to None will force a reconnect next time the property is accessed.
+        setattr(self.kc, f"_{channel_name}_channel", None)
+        task = asyncio.create_task(self.watch_channel(channel_name))
+        self.channel_watcher_parent_tasks.append(task)
+
+        # Finish cleanup
         for task in pending:
             task.cancel()
         for task in done:
             if task.exception():
                 raise task.exception()
 
-        logger.debug("Cycling channel based on task ending", extra={"channel": channel_name})
         self.channel_watching_tasks.remove(message_task)
         self.channel_watching_tasks.remove(status_task)
 
-        # The .<channel_name>_channel properties check if ._<channel_name>_channel attribute
-        # is None or not. If it is, it starts the connection on that channel. Setting this attr
-        # back to None will force a reconnect next time the property is accessed.
-        setattr(self.kc, f"_{channel_name}_channel", None)
-        return await self.watch_channel(channel_name)
+        # Provide a hook for subclasses to take action on channel disconnects
+        await self.handle_zmq_disconnect(channel_name)
 
     async def _watch_channel_for_status(self, monitor_socket: zmq.Socket):
         """
@@ -289,6 +321,9 @@ class SidecarKernelClient:
         """
         Override in subclasses for logging or handling of unparseable messages.
         """
+        pass
+
+    async def handle_zmq_disconnect(self, channel_name: str):
         pass
 
     async def __aenter__(self) -> "SidecarKernelClient":

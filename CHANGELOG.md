@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.2.1] - 2023-02-24
+### Added
+- `SidecarKernelClient.running_action` property to return what action the Kernel is probably handling. Useful for testing
+- Callback hook in the `SidecarKernelClient` to take action on ZMQ channel disconnect
+- Moved `DebugHandler` out of tests and into `handlers.py` so it can be used for testing by downstream apps
+
 ## [0.2.0] - 2023-02-22
 
 ### Changed
