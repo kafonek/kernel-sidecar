@@ -217,7 +217,7 @@ async def test_interrupt(kernel: SidecarKernelClient):
     handler1 = DebugHandler()  # first execution, should end up as error / interrupted
     handler2 = DebugHandler()  # second execution, should end up as aborted
     handler3 = DebugHandler()  # interrupt request
-    action1 = kernel.execute_request(code="import time; time.sleep(60)", handlers=[handler1])
+    action1 = kernel.execute_request(code="import time; time.sleep(600)", handlers=[handler1])
     action2 = kernel.execute_request(code="1 + 1", handlers=[handler2])
     action3 = kernel.interrupt_request(handlers=[handler3])
     await asyncio.gather(action1, action2, action3)
