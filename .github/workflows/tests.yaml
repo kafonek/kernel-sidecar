@@ -31,7 +31,3 @@ jobs:
 
       - name: Run tests
         run: poetry run pytest --reruns 5 -s --log-level DEBUG
-
-
-      - name: Kill Ipykernel
-        run: kill $(cat /tmp/kernel.pid)
