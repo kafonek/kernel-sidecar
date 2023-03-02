@@ -26,5 +26,16 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: 'poetry'
 
-      - run: poetry install
-      - run: poetry run pytest
+      - name: Install dependencies
+        run: poetry install
+
+      - name: Run Ipykernel
+        run: |
+          poetry run python -m ipykernel_launcher -f /tmp/kernel.json &
+          echo $! > /tmp/kernel.pid
+
+      - name: Run tests
+        run: poetry run pytest
+
+      - name: Kill Ipykernel
+        run: kill $(cat /tmp/kernel.pid)
