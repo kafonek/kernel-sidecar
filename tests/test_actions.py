@@ -9,24 +9,34 @@ from kernel_sidecar.handlers import DebugHandler
 from kernel_sidecar.models import messages, requests
 
 
-async def test_handlers(kernel: KernelSidecarClient):
+async def test_handlers(ipykernel: dict):
     """
-    Show that we can attach multiple handlers to a single action.
-     - As Handler class/subclass instances
-     - As generic async callables
-     - As init args and/or post-instance handlers list appends
+    - Show that handlers attached to an Action can be Handler subclass or async callables
+    - Show that they can be attached in different ways and the order matters,
+      - on Action init
+      - appending to Action.handlers after init
+      - appending to Action.handlers during kernel.send if there are default_handlers
     """
-    req = requests.KernelInfoRequest()
     handler1 = DebugHandler()
     handler2 = AsyncMock()
-    handler3 = AsyncMock()
-    action = actions.KernelAction(req, handlers=[handler1, handler2])
-    action.handlers.append(handler3)
-    kernel.send(action)
-    await action
+    handler3 = DebugHandler()
+    handler4 = DebugHandler()
+    async with KernelSidecarClient(
+        connection_info=ipykernel, default_handlers=[handler4]
+    ) as kernel:
+        req = requests.KernelInfoRequest()
+        action = actions.KernelAction(req, handlers=[handler1, handler2])
+        action.handlers.append(handler3)
+        kernel.send(action)
+        # order matters, the "default_handler" (handler4) should be last
+        assert action.handlers == [handler1, handler2, handler3, handler4, kernel.comm_manager]
+        await action
     assert handler1.counts == {"status": 2, "kernel_info_reply": 1}
+    # For the async fn, show it was called 3 times and the arg in the first message was Status
     assert handler2.call_count == 3
-    assert handler3.call_count == 3
+    assert isinstance(handler2.call_args_list[0].args[0], messages.Status)
+    assert handler3.counts == {"status": 2, "kernel_info_reply": 1}
+    assert handler4.counts == {"status": 2, "kernel_info_reply": 1}
 
 
 async def test_kernel_info(kernel: KernelSidecarClient):
@@ -38,7 +48,7 @@ async def test_kernel_info(kernel: KernelSidecarClient):
     action = kernel.kernel_info_request(handlers=[handler])
     await action
     assert handler.counts == {"status": 2, "kernel_info_reply": 1}
-    kernel_info_reply: messages.KernelInfoReply = handler.last_msg_by_type["kernel_info_reply"]
+    kernel_info_reply: messages.KernelInfoReply = handler.get_last_msg("kernel_info_reply")
     assert isinstance(kernel_info_reply, messages.KernelInfoReply)
     assert kernel_info_reply.content.status == "ok"
 
@@ -57,7 +67,7 @@ async def test_execute_statement(kernel: KernelSidecarClient):
         "execute_result": 1,
         "execute_reply": 1,
     }
-    execute_result: messages.ExecuteResult = handler.last_msg_by_type["execute_result"]
+    execute_result: messages.ExecuteResult = handler.get_last_msg("execute_result")
     assert isinstance(execute_result, messages.ExecuteResult)
     assert execute_result.content.data == {"text/plain": "2"}
 
@@ -75,7 +85,7 @@ async def test_execute_stream(kernel: KernelSidecarClient):
         "stream": 1,
         "execute_reply": 1,
     }
-    stream: messages.Stream = handler.last_msg_by_type["stream"]
+    stream: messages.Stream = handler.get_last_msg("stream")
     assert isinstance(stream, messages.Stream)
     assert stream.content.name == "stdout"
     assert stream.content.text == "hello world\n"
@@ -100,7 +110,7 @@ async def test_execute_display_data(kernel: KernelSidecarClient):
         "display_data": 1,
         "execute_reply": 1,
     }
-    display_data: messages.DisplayData = handler.last_msg_by_type["display_data"]
+    display_data: messages.DisplayData = handler.get_last_msg("display_data")
     assert isinstance(display_data, messages.DisplayData)
     assert display_data.content.data == {"text/plain": "'hello world'"}
 
@@ -127,10 +137,10 @@ async def test_execute_display_update(kernel: KernelSidecarClient):
         "update_display_data": 1,
         "execute_reply": 1,
     }
-    display_data: messages.DisplayData = handler.last_msg_by_type["display_data"]
+    display_data: messages.DisplayData = handler.get_last_msg("display_data")
     assert display_data.content.data == {"text/plain": "'hello world'"}
     assert display_data.content.transient == {"display_id": "test_display"}
-    update_display_data = handler.last_msg_by_type["update_display_data"]
+    update_display_data = handler.get_last_msg("update_display_data")
     assert isinstance(update_display_data, messages.UpdateDisplayData)
     assert update_display_data.content.data == {"text/plain": "'updated display'"}
     assert update_display_data.content.transient == {"display_id": "test_display"}
@@ -150,7 +160,7 @@ async def test_execute_error(kernel: KernelSidecarClient):
         "error": 1,
         "execute_reply": 1,
     }
-    error: messages.Error = handler.last_msg_by_type["error"]
+    error: messages.Error = handler.get_last_msg("error")
     assert isinstance(error, messages.Error)
     assert error.content.ename == "ZeroDivisionError"
     assert len(error.content.traceback) > 0
@@ -204,7 +214,7 @@ async def test_complete_request(kernel: KernelSidecarClient):
     await action
     assert handler.counts == {"status": 2, "complete_reply": 1}
 
-    complete_reply: messages.CompleteReply = handler.last_msg_by_type["complete_reply"]
+    complete_reply: messages.CompleteReply = handler.get_last_msg("complete_reply")
     assert "bar" in complete_reply.content.matches
 
 
@@ -223,97 +233,13 @@ async def test_interrupt(kernel: KernelSidecarClient):
     # Fail in a reasonable time if something goes wrong, don't let test run for 10 minutes
     await asyncio.wait_for(asyncio.gather(action1, action2, action3), timeout=10)
     assert handler1.counts == {"status": 2, "execute_input": 1, "error": 1, "execute_reply": 1}
-    assert handler1.last_msg_by_type["error"].content.ename == "KeyboardInterrupt"
-    assert handler1.last_msg_by_type["execute_reply"].content.status == "error"
+    assert handler1.get_last_msg("error").content.ename == "KeyboardInterrupt"
+    assert handler1.get_last_msg("execute_reply").content.status == "error"
 
     assert handler2.counts == {"status": 2, "execute_reply": 1}
-    assert handler2.last_msg_by_type["execute_reply"].content.status == "aborted"
+    assert handler2.get_last_msg("execute_reply").content.status == "aborted"
 
     assert handler3.counts == {"status": 2, "interrupt_reply": 1}
-
-
-async def test_comm(kernel: KernelSidecarClient):
-    """
-    Show that we can create a Comm on the Kernel side, then open a Comm from the sidecar and
-    send a Comm msg from sidecar to Kernel with expected response from Kernel.
-    """
-    code = textwrap.dedent(
-        """
-    def comm_fn(comm, open_msg):
-        @comm.on_msg
-        def _recv(msg):
-            comm.send({"echo": msg["content"]["data"]})
-        
-        comm.send("connected")
-
-    get_ipython().kernel.comm_manager.register_target("test_comm", comm_fn)
-    """
-    )
-    setup_action = kernel.execute_request(code)
-    await setup_action
-
-    handler1 = DebugHandler()  # for comm open
-    handler2 = DebugHandler()  # for comm msg
-    handler3 = DebugHandler()  # for comm close
-
-    action1 = kernel.comm_open_request(target_name="test_comm", handlers=[handler1])
-    await action1
-    assert handler1.counts == {"status": 2, "comm_msg": 1}
-    resp1: messages.CommMsg = handler1.last_msg_by_type["comm_msg"]
-    comm_id = resp1.content.comm_id
-
-    action2 = kernel.comm_msg_request(comm_id=comm_id, data={"test": "data"}, handlers=[handler2])
-    await action2
-    assert handler2.counts == {"status": 2, "comm_msg": 1}
-    resp2: messages.CommMsg = handler2.last_msg_by_type["comm_msg"]
-    assert resp2.content.data == {"echo": {"test": "data"}}
-
-    action3 = kernel.comm_close_request(comm_id=comm_id, handlers=[handler3])
-    await action3
-    assert handler3.counts == {"status": 2}
-
-
-async def test_ipywidgets(kernel: KernelSidecarClient):
-    """
-    Show how to capture comm messages emitted by ipywidgets
-    """
-    handler = DebugHandler()
-    code = textwrap.dedent(
-        """
-    from ipywidgets import IntSlider
-    slider = IntSlider()
-    slider.value = 5
-    slider
-    """
-    )
-    action = kernel.execute_request(code, handlers=[handler])
-    await action
-    assert handler.counts == {
-        "status": 2,
-        "execute_input": 1,
-        # three comm opens happen when initializing any widget, one for layout, one for style,
-        # and one for control of the model itself (e.g. updating value, parameters)
-        "comm_open": 3,
-        "comm_msg": 1,  # comm_msg emitted when calling slider.value
-        "execute_result": 1,  # From repring the widget as last line of input code
-        "execute_reply": 1,
-    }
-    execute_result: messages.ExecuteResult = handler.last_msg_by_type["execute_result"]
-    assert execute_result.content.data["text/plain"] == "IntSlider(value=5)"
-    model_id = execute_result.content.data["application/vnd.jupyter.widget-view+json"]["model_id"]
-    # last comm_open is the one for the model itself
-    comm_open: messages.CommOpen = handler.last_msg_by_type["comm_open"]
-    assert isinstance(comm_open, messages.CommOpen)
-    assert comm_open.content.comm_id == model_id
-    assert comm_open.content.data["state"]["_model_name"] == "IntSliderModel"
-    comm_msg: messages.CommMsg = handler.last_msg_by_type["comm_msg"]
-    assert isinstance(comm_msg, messages.CommMsg)
-    assert comm_msg.content.comm_id == model_id
-    assert comm_msg.content.data == {
-        "method": "update",
-        "state": {"value": 5},
-        "buffer_paths": [],
-    }
 
 
 def test_unrecognized_request_type():

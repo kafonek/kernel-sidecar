@@ -29,6 +29,7 @@ async def test_zmq_disconnect(ipykernel: dict):
     Show that a subclassed Kernel with zmq handling hooks takes action when zmq iopub channel
     gets disconnected because a message is larger than the max_message_size setting.
     """
+    kernel: DisconnectHandlingClient  # type hint here, can't hint while entering context manager
     async with DisconnectHandlingClient(connection_info=ipykernel, max_message_size=1024) as kernel:
         # A small stream output should come through fine
         handler = DebugHandler()

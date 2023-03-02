@@ -1,25 +1,35 @@
 """
+The KernelSidecarClient manages sending and receiving messages over zmq, and keeping track of
+"Actions" that it uses to delegate received messages to appropriate handlers.
+
 Use:
 
-async with kernel_sidecar.Kernel(connection_info) as kernel:
-    action = kernel.kernel_info_request()
+from kernel_sidecar.client import KernelSidecarClient
+from kernel_sidecar.handlers import DebugHandler
+
+async with KernelSidecarClient(connection_info) as client:
+    handler = DebugHandler()
+    action = kernel.kernel_info_request(handlers=[handler]))
     await action
 
-print(action.content)
+assert handler.counts == {"status": 2, "kernel_info_reply": 1}
 """
 
 import asyncio
 import logging
-from typing import List, Optional
+from typing import Awaitable, Callable, List, Optional, Type
 
 import pydantic
 import zmq
 from jupyter_client import AsyncKernelClient, KernelConnectionInfo
 from jupyter_client.channels import ZMQSocketChannel
-from kernel_sidecar import actions
-from kernel_sidecar.models import messages, requests
 from zmq.asyncio import Context
 from zmq.utils.monitor import recv_monitor_message
+
+from kernel_sidecar import actions
+from kernel_sidecar.comms import CommHandler, CommManager, CommOpenHandler, CommTargetNotFound
+from kernel_sidecar.handlers import Handler
+from kernel_sidecar.models import messages, requests
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +43,8 @@ class KernelSidecarClient:
      - Parses messages coming from the Kernel into (`models.messages.py`) Pydantic models
      - Delegates handling those messages to the appropriate Action that started the request-reply
        sequence, and that Action should have Handlers / async fn callbacks to handle business logic
+     - Includes options for "default handlers" applied to all Actions, and a reference to the
+       CommManager, which will process and/or route comm_open, comm_msg, and comm_close messages
     """
 
     _message_model = messages.Message
@@ -45,6 +57,8 @@ class KernelSidecarClient:
         self,
         connection_info: KernelConnectionInfo,
         max_message_size: Optional[int] = None,
+        default_handlers: List[Handler] = None,
+        comm_manager: Optional[CommManager] = None,
     ):
         """
         - connection_info: dict with zmq ports the Kernel has open
@@ -52,17 +66,20 @@ class KernelSidecarClient:
           automatically close the socket if the message is over that size. Useful if the sidecar
           application has less memory than the Kernel and need to avoid OOM in sidecar from large
           outputs or other messages coming in from the Kernel
+        - default_handlers: appended to every Action's handler list when Action request is sent
         """
-        zmq_context = Context()
+        zmq_context = Context()  # only relevant if max_message_size is set
         if max_message_size:
             zmq_context.setsockopt(zmq.SocketOption.MAXMSGSIZE, max_message_size)
         self.kc = AsyncKernelClient(context=zmq_context)
         self.kc.load_connection_info(connection_info)
-
-        self.status: messages.KernelStatus = None
-        self.actions: dict[str, actions.KernelAction] = {}
-
         self.kc.start_channels()
+
+        # Used to delegate received messages to handlers attached to the Action
+        # When we send a request to the kernel, we use the request msg_id {msg_id: Action}
+        # When we receive messages from kernel, we look up the Action by the parent_header.msg_id
+        # and delegate the messages to handlers attached to that Action
+        self.actions: dict[str, actions.KernelAction] = {}
 
         # message queue, raw data (dict) from all zmq channels gets dropped into here
         # and a separate asyncio.Task picks them up off the queue to pass into the
@@ -73,6 +90,15 @@ class KernelSidecarClient:
         self.mq_task: asyncio.Task = None
         self.channel_watching_tasks: List[asyncio.Task] = []
         self.channel_watcher_parent_tasks: List[asyncio.Task] = []
+
+        # Handlers to attach to every Action. These will be appended to action.handlers
+        # during .send, which means they'll run /after/ other handlers.
+        # Fail right away if there's common mistake of init'ing with default_handlers=Handler()
+        if default_handlers and not isinstance(default_handlers, list):
+            raise RuntimeError(f"{default_handlers=} must be None or a list")
+        self.default_handlers = default_handlers or []
+
+        self.comm_manager = comm_manager or CommManager()
 
     @property
     def running_action(self):
@@ -94,6 +120,12 @@ class KernelSidecarClient:
         if action.msg_id in self.actions:
             raise RuntimeError(f"Already tracking reply routing for {action.msg_id=}")
 
+        # Reminder: when messages are processed, they get sent to each Action handler in order so
+        # default handlers will run /after/ handlers already attached to this Action and the
+        # CommManager handler will run last
+        action.handlers.extend(self.default_handlers)
+        action.handlers.append(self.comm_manager)
+
         # Send the request over the appropriate zmq channel
         try:
             channel: ZMQSocketChannel = getattr(self.kc, f"{action.request._channel}_channel")
@@ -109,14 +141,14 @@ class KernelSidecarClient:
         return action
 
     def kernel_info_request(
-        self, handlers: List[actions.HandlerType] = None
+        self, handlers: List[Callable[[messages.Message], Awaitable[None]]] = None
     ) -> actions.KernelAction:
         req = requests.KernelInfoRequest()
         action = actions.KernelAction(request=req, handlers=handlers)
         return self.send(action)
 
     def execute_request(
-        self, code: str, silent: bool = False, handlers: List[actions.HandlerType] = None
+        self, code: str, silent: bool = False, handlers: List[Handler] = None
     ) -> actions.KernelAction:
         req = requests.ExecuteRequest(content={"code": code, "silent": silent})
         action = actions.KernelAction(request=req, handlers=handlers)
@@ -126,7 +158,7 @@ class KernelSidecarClient:
         self,
         code: str,
         cursor_pos: Optional[int] = None,
-        handlers: List[actions.HandlerType] = None,
+        handlers: List[Handler] = None,
     ) -> actions.KernelAction:
         if cursor_pos is None:
             cursor_pos = len(code)
@@ -134,16 +166,43 @@ class KernelSidecarClient:
         action = actions.KernelAction(request=req, handlers=handlers)
         return self.send(action)
 
-    def interrupt_request(self, handlers: List[actions.HandlerType] = None) -> actions.KernelAction:
+    def interrupt_request(self, handlers: List[Handler] = None) -> actions.KernelAction:
         req = requests.InterruptRequest()
         action = actions.KernelAction(request=req, handlers=handlers)
         return self.send(action)
+
+    async def comm_open(
+        self, target_name: str, handler_cls: Type[CommHandler], data: Optional[dict] = None
+    ) -> CommHandler:
+        """
+        High level helper for opening a comm from the sidecar side. If there's no comm handling
+        function registered on the kernel for the given target_name, the kernel will send out
+        a stream message with stderr and a comm_close event, which we'll raise here.
+        """
+        # think of this handler as an ephemeral handler just here so we can raise an error if the
+        # kernel reports that the comm target is not found
+        msg_handler = CommOpenHandler()
+        # Create Action and send comm_open over zmq
+        action = self.comm_open_request(target_name, data, handlers=[msg_handler])
+        # pull out comm_id from the request
+        req: requests.CommOpen = action.request
+        comm_id = req.content.comm_id
+        # Register the CommHandler in the CommManager before awaiting the Action, so CommManager
+        # can observe any comm_msg during the open process and delegate to CommHandler.
+        # If there's an error, comm_manager will deregister while handling comm_close msg
+        comm_handler = handler_cls(comm_id=comm_id)
+        self.comm_manager.comms[comm_id] = comm_handler
+        logger.debug("registered comm", extra={"comm_id": comm_id, "handler": comm_handler})
+        await action
+        if msg_handler.comm_closed_id == comm_id:
+            raise CommTargetNotFound(msg_handler.comm_err_msg)
+        return comm_handler
 
     def comm_open_request(
         self,
         target_name: str,
         data: Optional[dict] = None,
-        handlers: List[actions.HandlerType] = None,
+        handlers: List[Handler] = None,
     ) -> actions.KernelAction:
         if data is None:
             data = {}
@@ -155,14 +214,14 @@ class KernelSidecarClient:
         self,
         comm_id: str,
         data: Optional[dict] = None,
-        handlers: List[actions.HandlerType] = None,
+        handlers: List[Handler] = None,
     ) -> actions.KernelAction:
         req = requests.CommMsg(content={"comm_id": comm_id, "data": data})
         action = actions.KernelAction(request=req, handlers=handlers)
         return self.send(action)
 
     def comm_close_request(
-        self, comm_id: str, handlers: List[actions.HandlerType] = None
+        self, comm_id: str, handlers: List[Handler] = None
     ) -> actions.KernelAction:
         req = requests.CommClose(content={"comm_id": comm_id})
         action = actions.KernelAction(request=req, handlers=handlers)
@@ -195,7 +254,7 @@ class KernelSidecarClient:
         logger.debug("Channel watcher started", extra={"channel": channel_name})
         channel: ZMQSocketChannel = getattr(self.kc, f"{channel_name}_channel")
 
-        message_task = asyncio.create_task(self._watch_channel_for_messages(channel))
+        message_task = asyncio.create_task(self._watch_channel_for_messages(channel, channel_name))
         status_task = asyncio.create_task(
             self._watch_channel_for_status(channel.socket.get_monitor_socket())
         )
@@ -250,7 +309,7 @@ class KernelSidecarClient:
             except asyncio.CancelledError:
                 break
 
-    async def _watch_channel_for_messages(self, channel: ZMQSocketChannel):
+    async def _watch_channel_for_messages(self, channel: ZMQSocketChannel, channel_name: str):
         """Takes messages seen on zmq and drops them into our internal asyncio.Queue"""
         while True:
             try:
@@ -258,7 +317,11 @@ class KernelSidecarClient:
                     await asyncio.sleep(0.001)
                     continue
                 raw_msg: dict = await channel.get_msg()
-                logger.debug("Message received on zmq", extra={"body": raw_msg})
+                msg_type = raw_msg.get("msg_type", "")
+                logger.debug(
+                    f"Message {msg_type} on {channel_name}",
+                    extra={"body": raw_msg, "channel": channel_name},
+                )
                 self.mq.put_nowait(raw_msg)
             except asyncio.CancelledError:
                 break
@@ -345,4 +408,5 @@ class KernelSidecarClient:
             task.cancel()
         if self.mq_task:
             self.mq_task.cancel()
+        self.kc.stop_channels()
         self.kc.stop_channels()

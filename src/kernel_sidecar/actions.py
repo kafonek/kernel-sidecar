@@ -9,8 +9,9 @@ server / frontends, should be implemented in handlers that are attached to each 
 """
 import asyncio
 import logging
-from typing import Awaitable, Callable, List
+from typing import List
 
+from kernel_sidecar.handlers import Handler
 from kernel_sidecar.models import messages, requests
 
 logger = logging.getLogger(__name__)
@@ -31,25 +32,32 @@ REPLY_MSG_TYPES = {
     "comm_close": None,
 }
 
-HandlerType = Callable[[messages.Message], Awaitable[None]]
-
 
 class KernelAction:
     REPLY_MSG_TYPES = REPLY_MSG_TYPES
 
-    def __init__(self, request: requests.Request, handlers: List[HandlerType] = None):
+    def __init__(self, request: requests.Request, handlers: List[Handler] = None):
         self.request = request
         if request.header.msg_type not in self.REPLY_MSG_TYPES:
             raise ValueError(
                 f"Unrecognized request type {request.header.msg_type}. Raising error because "
-                "otherwise the KernelAction would not know when the request-reply cycle is complete"
+                "the KernelAction would not know when the request-reply cycle is finished. If you "
+                "have a custom request type, add it to KernelAction.REPLY_MSG_TYPES."
             )
         self.expected_reply_msg_type = self.REPLY_MSG_TYPES[request.header.msg_type]
+
+        # Events tied to making this instance awaitable
         self.kernel_idle = asyncio.Event()
         self.reply_seen = asyncio.Event()
         self.done = asyncio.Event()
+
+        # Routing messages to handlers
         self.handlers = handlers or []
-        self.sent = False  # Flips to True during kernel.send, to avoid sending multiple times
+
+        # Flips to True during kernel.send, and kernel.send won't send anything over ZMQ if the
+        # Action.sent is True. Avoid weird edge cases with routing messages to different Action
+        # instances that might have same request msg_id
+        self.sent = False
 
     @property
     def msg_id(self):
@@ -87,6 +95,7 @@ class KernelAction:
         elif msg.msg_type == self.expected_reply_msg_type:
             self.reply_seen.set()
             self.maybe_set_done()
+
         # Delegate the message to any attached handlers, in the order they were attached
         for handler in self.handlers:
             await handler(msg)

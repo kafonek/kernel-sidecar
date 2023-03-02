@@ -1,4 +1,7 @@
+import asyncio
+import json
 import logging
+import os
 
 import pytest
 import structlog
@@ -6,29 +9,43 @@ from jupyter_client import AsyncKernelClient, manager
 from kernel_sidecar.client import KernelSidecarClient
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
+def event_loop():
+    return asyncio.get_event_loop()
+
+
+@pytest.fixture(scope="session")
 async def ipykernel() -> dict:
     """
-    Starts a new ipykernel in a separate process per test.
+    Starts a new ipykernel in a separate process. If you want to manually start an ipykernel
+    to see Kernel debug logs or because it's set up as a separate step in CI jobs, set the
+    IPYKERNEL_TEST_CONNECTION_FILE env variable to the .json connection file. For example:
 
-    Developers: if you need to see debug logs from the kernel, start an ipykernel manually
-    with `python -m ipykernel_launcher --debug` and look for the connection file  (probably
-    something like: ~/.local/share/jupyter/runtime/kernel-123.json). Instead of yielding
-    `kc.get_connection_info()` below, `yield json.load(open(path_to_connection_file)`
+    poetry shell
+    python -m ipykernel_launcher --debug -f /tmp/kernel.json
+
+    Then run pytest with:
+
+    IPYKERNEL_TEST_CONNECTION_FILE=/tmp/kernel.json pytest
     """
-    km: manager.AsyncKernelManager
-    kc: AsyncKernelClient
-    km, kc = await manager.start_new_async_kernel()
-    try:
-        yield kc.get_connection_info()
-    finally:
-        await km.shutdown_kernel()
+    if "IPYKERNEL_TEST_CONNECTION_FILE" in os.environ:
+        yield json.load(open(os.environ["IPYKERNEL_TEST_CONNECTION_FILE"]))
+    else:
+        km: manager.AsyncKernelManager
+        kc: AsyncKernelClient
+        km, kc = await manager.start_new_async_kernel()
+        try:
+            yield kc.get_connection_info()
+        finally:
+            await km.shutdown_kernel()
 
 
 @pytest.fixture
 async def kernel(ipykernel: dict) -> KernelSidecarClient:
     async with KernelSidecarClient(connection_info=ipykernel) as kernel:
         yield kernel
+        # reset namespace after test is done
+        await kernel.execute_request(code="%reset -f in out dhist")
 
 
 @pytest.fixture(autouse=True)
@@ -117,4 +134,5 @@ def configure_logging():
     )
 
     slogger = structlog.get_logger(__name__)
+    slogger.info("structlog configured for structlog-generated logs and vanilla logging")
     slogger.info("structlog configured for structlog-generated logs and vanilla logging")
