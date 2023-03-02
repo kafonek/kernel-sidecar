@@ -37,8 +37,8 @@ jobs:
 
       - name: Run tests
         run: poetry run pytest --reruns 5 --timeout 10
-        env:
-          IPYKERNEL_TEST_CONNECTION_FILE: /tmp/kernel.json
+        # env:
+        #   IPYKERNEL_TEST_CONNECTION_FILE: /tmp/kernel.json
 
       - name: Kill Ipykernel
         run: kill $(cat /tmp/kernel.pid)
