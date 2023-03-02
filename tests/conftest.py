@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 import pytest
@@ -6,7 +7,12 @@ from jupyter_client import AsyncKernelClient, manager
 from kernel_sidecar.client import KernelSidecarClient
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
+def event_loop():
+    return asyncio.get_event_loop()
+
+
+@pytest.fixture(scope="session")
 async def ipykernel() -> dict:
     """
     Starts a new ipykernel in a separate process per test.
@@ -29,6 +35,8 @@ async def ipykernel() -> dict:
 async def kernel(ipykernel: dict) -> KernelSidecarClient:
     async with KernelSidecarClient(connection_info=ipykernel) as kernel:
         yield kernel
+        # reset namespace after test is done
+        await kernel.execute_request(code="%reset -f in out dhist")
 
 
 @pytest.fixture(autouse=True)
@@ -117,4 +125,5 @@ def configure_logging():
     )
 
     slogger = structlog.get_logger(__name__)
+    slogger.info("structlog configured for structlog-generated logs and vanilla logging")
     slogger.info("structlog configured for structlog-generated logs and vanilla logging")
