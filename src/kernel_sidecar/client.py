@@ -23,12 +23,13 @@ import pydantic
 import zmq
 from jupyter_client import AsyncKernelClient, KernelConnectionInfo
 from jupyter_client.channels import ZMQSocketChannel
+from zmq.asyncio import Context
+from zmq.utils.monitor import recv_monitor_message
+
 from kernel_sidecar import actions
 from kernel_sidecar.comms import CommHandler, CommManager, CommOpenHandler, CommTargetNotFound
 from kernel_sidecar.handlers import Handler
 from kernel_sidecar.models import messages, requests
-from zmq.asyncio import Context
-from zmq.utils.monitor import recv_monitor_message
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,7 @@ class KernelSidecarClient:
             zmq_context.setsockopt(zmq.SocketOption.MAXMSGSIZE, max_message_size)
         self.kc = AsyncKernelClient(context=zmq_context)
         self.kc.load_connection_info(connection_info)
+        self.kc.start_channels()
 
         # Used to delegate received messages to handlers attached to the Action
         # When we send a request to the kernel, we use the request msg_id {msg_id: Action}
@@ -406,4 +408,5 @@ class KernelSidecarClient:
             task.cancel()
         if self.mq_task:
             self.mq_task.cancel()
+        self.kc.stop_channels()
         self.kc.stop_channels()
