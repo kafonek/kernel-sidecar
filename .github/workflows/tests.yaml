@@ -29,16 +29,9 @@ jobs:
       - name: Install dependencies
         run: poetry install
 
-      - name: Run Ipykernel
-        run: |
-          poetry run python -m ipykernel_launcher -f /tmp/kernel.json &
-          sleep 1
-          echo $! > /tmp/kernel.pid
-
       - name: Run tests
         run: poetry run pytest --reruns 5 -s --log-level DEBUG
-        # env:
-        #   IPYKERNEL_TEST_CONNECTION_FILE: /tmp/kernel.json
+
 
       - name: Kill Ipykernel
         run: kill $(cat /tmp/kernel.pid)
