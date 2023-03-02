@@ -36,7 +36,7 @@ jobs:
           echo $! > /tmp/kernel.pid
 
       - name: Run tests
-        run: poetry run pytest --reruns 5 --timeout 10
+        run: poetry run pytest --reruns 5 -s --log-level DEBUG
         # env:
         #   IPYKERNEL_TEST_CONNECTION_FILE: /tmp/kernel.json
 
