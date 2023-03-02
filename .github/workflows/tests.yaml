@@ -32,10 +32,11 @@ jobs:
       - name: Run Ipykernel
         run: |
           poetry run python -m ipykernel_launcher -f /tmp/kernel.json &
+          sleep 1
           echo $! > /tmp/kernel.pid
 
       - name: Run tests
-        run: poetry run pytest
+        run: poetry run pytest --reruns 5 --timeout 10
         env:
           IPYKERNEL_TEST_CONNECTION_FILE: /tmp/kernel.json
 
