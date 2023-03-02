@@ -30,4 +30,4 @@ jobs:
         run: poetry install
 
       - name: Run tests
-        run: poetry run pytest --reruns 5 -s --log-level DEBUG
+        run: poetry run pytest --reruns 5
