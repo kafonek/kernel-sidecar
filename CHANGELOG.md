@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+
+## [0.3.2] -- 2023-03-10
 ### Added
 - CLI, `sidecar --help`
   - `sidecar -f <connection-file>` to send a kernel info request, see if the connection works
