@@ -5,6 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+### Added
+- CLI, `sidecar --help`
+  - `sidecar -f <connection-file>` to send a kernel info request, see if the connection works
+  - `sidecar -f <connection-file> --execute <code>` to send an execute request
+  - `sidecar -f <connection-file> --debug` to log out DEBUG (all ZMQ messages)
+
+### Changed
+- Relaxed some of the Pydantic models after trying this out with Rust kernel, which doesn't quite fit Jupyter message spec
+- DEBUG logs using `pprint.pformat`, and some noisier logging around validation errors when parsing ZMQ messages
+
 ## [0.3.1] - 2023-03-02
 
 ### Added
