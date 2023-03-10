@@ -17,19 +17,19 @@ assert handler.counts == {"status": 2, "kernel_info_reply": 1}
 
 import asyncio
 import logging
+import pprint
 from typing import Awaitable, Callable, List, Optional, Type
 
 import pydantic
 import zmq
 from jupyter_client import AsyncKernelClient, KernelConnectionInfo
 from jupyter_client.channels import ZMQSocketChannel
-from zmq.asyncio import Context
-from zmq.utils.monitor import recv_monitor_message
-
 from kernel_sidecar import actions
 from kernel_sidecar.comms import CommHandler, CommManager, CommOpenHandler, CommTargetNotFound
 from kernel_sidecar.handlers import Handler
 from kernel_sidecar.models import messages, requests
+from zmq.asyncio import Context
+from zmq.utils.monitor import recv_monitor_message
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +134,10 @@ class KernelSidecarClient:
             # Update the .actions dictionary so that we route any observed messages coming to us
             # over ZMQ into this action for handling callbacks
             self.actions[action.msg_id] = action
-            logger.debug("Sent request to kernel", extra={"body": action.request.dict()})
+            logger.debug(
+                f"Sent {action.request.header.msg_type} to kernel",
+                extra={"body": pprint.pformat(action.request.dict())},
+            )
         except Exception as e:
             logger.exception("Error sending message", extra={"body": action.request.dict()})
             raise e
@@ -168,6 +171,13 @@ class KernelSidecarClient:
 
     def interrupt_request(self, handlers: List[Handler] = None) -> actions.KernelAction:
         req = requests.InterruptRequest()
+        action = actions.KernelAction(request=req, handlers=handlers)
+        return self.send(action)
+
+    def shutdown_request(
+        self, restart: bool = True, handlers: List[Handler] = None
+    ) -> actions.KernelAction:
+        req = requests.ShutdownRequest(content={"restart": restart})
         action = actions.KernelAction(request=req, handlers=handlers)
         return self.send(action)
 
@@ -269,7 +279,7 @@ class KernelSidecarClient:
 
         # Reconnect ASAP
         # The .<channel_name>_channel properties check if ._<channel_name>_channel attribute
-        # is None or not. If it is, it starts the connection on that channel. Setting this attr
+        # is None. If it is None, it starts the connection on that channel. Setting this attr
         # back to None will force a reconnect next time the property is accessed.
         setattr(self.kc, f"_{channel_name}_channel", None)
         task = asyncio.create_task(self.watch_channel(channel_name))
@@ -320,7 +330,7 @@ class KernelSidecarClient:
                 msg_type = raw_msg.get("msg_type", "")
                 logger.debug(
                     f"Message {msg_type} on {channel_name}",
-                    extra={"body": raw_msg, "channel": channel_name},
+                    extra={"body": pprint.pformat(raw_msg), "channel": channel_name},
                 )
                 self.mq.put_nowait(raw_msg)
             except asyncio.CancelledError:
@@ -384,7 +394,12 @@ class KernelSidecarClient:
         """
         Override in subclasses for logging or handling of unparseable messages.
         """
-        pass
+        # Make a noisy warning here because it will potentially break awaiting actions, such as
+        # if kernel_info_reply ends up unparseable because LanguageInfo payload is slightly off or
+        # something, then await sidecar.kernel_info_request() will never resolve
+        logger.warning(
+            "Unparseable message", extra={"body": pprint.pformat(raw_msg), "error": error}
+        )
 
     async def handle_zmq_disconnect(self, channel_name: str):
         pass
@@ -392,6 +407,9 @@ class KernelSidecarClient:
     async def __aenter__(self) -> "KernelSidecarClient":
         # General asyncio comment: make sure tasks always have a reference (assigned to variable or
         # being awaited) or they might be garbage collected while running.
+        # @kafonek: this seems like a situation where 3.11+ asyncio.TaskGroup's might help but tried
+        # it briefly and it didn't yield out of the context manager like I expected. Also not sure I
+        # want to pin to 3.11+ quite yet.
         for channel in ["iopub", "shell", "control", "stdin"]:
             task = asyncio.create_task(self.watch_channel(channel))
             self.channel_watcher_parent_tasks.append(task)
@@ -408,5 +426,4 @@ class KernelSidecarClient:
             task.cancel()
         if self.mq_task:
             self.mq_task.cancel()
-        self.kc.stop_channels()
         self.kc.stop_channels()

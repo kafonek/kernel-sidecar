@@ -192,15 +192,17 @@ class ExecuteReplyOkContent(BaseModel):
 class ExecuteReplyErrorContent(BaseModel):
     status: Literal[CellStatus.error] = CellStatus.error
     execution_count: int
-    payload: List[Payload] = Field(default_factory=list)
-    user_expressions: dict = Field(default_factory=dict)
-    ename: str
-    engine_info: dict
-    evalue: str
-    traceback: List[str]
+    # Required in the Spec but relaxing the model here since Rust (evcxr) 0.14.2 doesn't send these
+    # https://github.com/evcxr/evcxr/issues/281
+    ename: Optional[str] = None
+    evalue: Optional[str] = None
+    traceback: List[str] = Field(default_factory=list)
+    # ipykernel sends over engine_info and payload as well, but that's not technically in spec
+    # so just handle it with extra="allow" below
 
     class Config:
         use_enum_values = True
+        extra = "allow"
 
 
 class ExecuteReplyAbortedContent(BaseModel):
@@ -320,13 +322,19 @@ class CommInfoReply(MessageBase):
 
 # Kernel info - https://jupyter-client.readthedocs.io/en/stable/messaging.html#kernel-info
 class LanguageInfo(BaseModel):
+    # Rust Kernel (evcxr) 0.14.2 does not match the LanguageInfo spec exactly, loosening the
+    # model a bit here to avoid Pydantic validation errors on kernel info request/reply
+    # https://github.com/evcxr/evcxr/issues/280
     name: str
     version: str
     mimetype: str
     file_extension: str
-    pygments_lexer: str
+    pygments_lexer: Optional[str] = None
     codemirror_mode: Union[str, dict]
-    nbconvert_exporter: str
+    nbconvert_exporter: Optional[str] = None
+
+    class Config:
+        extra = "allow"
 
 
 class KernelInfoReplyContent(BaseModel):
