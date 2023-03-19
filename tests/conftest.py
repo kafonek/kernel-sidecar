@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 
 import pytest
@@ -43,8 +44,13 @@ async def ipykernel() -> dict:
 async def kernel(ipykernel: dict) -> KernelSidecarClient:
     async with KernelSidecarClient(connection_info=ipykernel) as kernel:
         yield kernel
-        # reset namespace after test is done
+        # reset namespace after test is done, turn off debug logs if they're on to reduce noise
+        log_level = logging.getLogger("kernel_sidecar").getEffectiveLevel()
+        if log_level == logging.DEBUG:
+            logging.getLogger("kernel_sidecar").setLevel(logging.INFO)
         await kernel.execute_request(code="%reset -f in out dhist")
+        if log_level == logging.DEBUG:
+            logging.getLogger("kernel_sidecar").setLevel(log_level)
 
 
 @pytest.fixture(autouse=True)

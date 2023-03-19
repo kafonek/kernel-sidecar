@@ -407,6 +407,16 @@ class Shutdown(MessageBase):
     content: ShutdownContent
 
 
+# Clear Output - https://jupyter-client.readthedocs.io/en/stable/messaging.html#clear-output
+class ClearOutputContent(BaseModel):
+    wait: bool
+
+
+class ClearOutput(MessageBase):
+    msg_type: Literal["clear_output"]
+    content: ClearOutputContent
+
+
 # Debug reply - https://jupyter-client.readthedocs.io/en/stable/messaging.html#debug-request
 class DumpCellBody(BaseModel):
     sourcePath: str
@@ -486,6 +496,7 @@ Message = Annotated[
         HistoryReply,
         InterruptReply,
         Shutdown,
+        ClearOutput,
         DebugReply,
         InputRequest,
     ],
