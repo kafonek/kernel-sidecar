@@ -258,11 +258,35 @@ class Stream(MessageBase):
     content: StreamContent
 
 
+# display_data transient is optional, update_display_data transient is required
+# Besides that content should be the same. Note that two variables could be assigned to the same
+# transient display - disp1 = display('foo', display_id=123); disp2 = display('bar', display_id=123)
+# and they'll be rendered with the same value, disp1 updated to content 'bar'.
+# https://jupyter-client.readthedocs.io/en/stable/messaging.html#display-data
+class DisplayDataTransient(BaseModel):
+    display_id: Optional[str] = None
+
+    class Config:
+        extra = "allow"
+
+
 class DisplayDataContent(BaseModel):
     output_type: Literal["display_data"] = "display_data"
     data: dict  # mimebundle
     metadata: dict = Field(default_factory=dict)
-    transient: dict = Field(default_factory=dict)
+    transient: DisplayDataTransient
+
+    class Config:
+        # including transient in a saved .json file would be invalid jupyter spec, so by default
+        # don't write out that field when calling .json().
+        # If we decide to rethink that idea, then NotebookBuilder or Notebook or something would
+        # want to call something pretty gnarly liike:
+        # .json(exclude={'cells': {'__all__': {'outputs': {'__all__': {'transient': True}}}}})
+        fields = {"transient": {"exclude": True}}
+
+    @property
+    def display_id(self) -> Optional[str]:
+        return self.transient.display_id
 
 
 class DisplayData(MessageBase):
@@ -270,8 +294,22 @@ class DisplayData(MessageBase):
     content: DisplayDataContent
 
 
+class UpdateDisplayTransient(BaseModel):
+    display_id: str
+
+    class Config:
+        extra = "allow"
+
+
 class UpdateDisplayDataContent(DisplayDataContent):
     output_type: Literal["update_display_data"] = "update_display_data"
+    data: dict  # mimebundle
+    metadata: dict = Field(default_factory=dict)
+    transient: DisplayDataTransient
+
+    @property
+    def display_id(self) -> str:
+        return self.transient.display_id
 
 
 class UpdateDisplayData(MessageBase):
