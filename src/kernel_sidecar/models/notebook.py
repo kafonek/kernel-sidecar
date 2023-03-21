@@ -12,44 +12,18 @@ notebook = Notebook.parse_obj(nb.dict())
 assert notebook.dict() == nb.dict()
 """
 
-from typing import Annotated, Any, Dict, List, Literal, Optional, Union
+import uuid
+from typing import Annotated, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, validator
 
+from kernel_sidecar.models import messages
 
-# Cell outputs modeled with a discriminator pattern where the output_type
-# field will determine what kind of output we have
-# https://nbformat.readthedocs.io/en/latest/format_description.html#code-cell-outputs
-class StreamOutput(BaseModel):
-    output_type: Literal["stream"] = "stream"
-    name: str  # stdout or stderr
-    text: str
-
-
-class DisplayDataOutput(BaseModel):
-    output_type: Literal["display_data"] = "display_data"
-    data: Dict[str, Any]
-    metadata: Dict[str, Any]
-
-
-class ExecuteResultOutput(BaseModel):
-    output_type: Literal["execute_result"] = "execute_result"
-    execution_count: int
-    data: Dict[str, Any]
-    metadata: Dict[str, Any]
-
-
-class ErrorOutput(BaseModel):
-    output_type: Literal["error"] = "error"
-    ename: str
-    evalue: str
-    traceback: List[str]
-
-
-# Use: List[CellOutput] or pydantic.parse_obj_as(CellOutput, dict)
-CellOutput = Annotated[
-    Union[StreamOutput, DisplayDataOutput, ExecuteResultOutput, ErrorOutput],
-    Field(discriminator="output_type"),
+CellOutput = Union[
+    messages.StreamContent,
+    messages.DisplayDataContent,
+    messages.ExecuteResultContent,
+    messages.ErrorContent,
 ]
 
 
@@ -106,3 +80,15 @@ class Notebook(BaseModel):
     nbformat_minor: int = 5
     metadata: dict = Field(default_factory=dict)
     cells: List[NotebookCell] = Field(default_factory=list)
+
+    @validator("cells")
+    def ensure_unique_cell_ids(cls, v):
+        cell_ids = []
+        cleaned_cells = []
+        cell: NotebookCell  # type hinting in for loop below
+        for cell in v:
+            if not cell.id or cell.id in cell_ids:
+                cell.id = str(uuid.uuid4())
+            cell_ids.append(cell.id)
+            cleaned_cells.append(cell)
+        return cleaned_cells
