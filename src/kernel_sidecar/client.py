@@ -24,14 +24,38 @@ import pydantic
 import zmq
 from jupyter_client import AsyncKernelClient, KernelConnectionInfo
 from jupyter_client.channels import ZMQSocketChannel
-from kernel_sidecar import actions
-from kernel_sidecar.comms import CommHandler, CommManager, CommOpenHandler, CommTargetNotFound
-from kernel_sidecar.handlers import Handler
-from kernel_sidecar.models import messages, requests
 from zmq.asyncio import Context
 from zmq.utils.monitor import recv_monitor_message
 
+from kernel_sidecar import actions
+from kernel_sidecar.comms import CommHandler, CommManager
+from kernel_sidecar.handlers import Handler
+from kernel_sidecar.models import messages, requests
+
 logger = logging.getLogger(__name__)
+
+
+class CommTargetNotFound(Exception):
+    pass
+
+
+class CommOpenHandler(Handler):
+    """
+    Used when sending a comm_open request from sidecar to kernel. If there is no Comm registered
+    for the target_name, the Kernel will say as much in a stream (stderr) reply, and send a
+    comm_close event.
+    """
+
+    def __init__(self):
+        self.comm_err_msg = None
+        self.comm_closed_id = None
+
+    async def handle_stream(self, msg: messages.Stream):
+        if msg.content.name == "stderr":
+            self.comm_err_msg = msg.content.text
+
+    async def handle_comm_close(self, msg: messages.CommClose):
+        self.comm_closed_id = msg.content.comm_id
 
 
 class KernelSidecarClient:

@@ -95,24 +95,25 @@ class CommManager(Handler):
         pass
 
 
-class CommTargetNotFound(Exception):
-    pass
+class WidgetHandler(CommHandler):
+    def __init__(self, comm_id: str):
+        super().__init__(comm_id)
+        self.state: Dict = {}
 
+    @property
+    def model_name(self):
+        return self.state.get("_model_name", "")
 
-class CommOpenHandler(Handler):
-    """
-    Used when sending a comm_open request from sidecar to kernel. If there is no Comm registered
-    for the target_name, the Kernel will say as much in a stream (stderr) reply, and send a
-    comm_close event.
-    """
+    async def handle_comm_open(self, msg: messages.CommOpen):
+        self.state = msg.content.data["state"]
 
-    def __init__(self):
-        self.comm_err_msg = None
-        self.comm_closed_id = None
+    async def handle_comm_msg(self, msg: messages.CommMsg):
+        self.state = msg.content.data["state"]
 
+    # Below methods are only used with Output widgets
+    # What will happen is that a special Handler for execute requests will see when a comm_msg
+    # comes across which indicates stream / display_data / error should be directed to the Output
+    # widget instead of the normal cell output. It will look up the comm_id in the CommManager and
+    # await these methods.
     async def handle_stream(self, msg: messages.Stream):
-        if msg.content.name == "stderr":
-            self.comm_err_msg = msg.content.text
-
-    async def handle_comm_close(self, msg: messages.CommClose):
-        self.comm_closed_id = msg.content.comm_id
+        self.state["outputs"].append(msg.content)
