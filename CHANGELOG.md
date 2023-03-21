@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+### Added
+- `OutputHandler` and a `NotebookBuilder` to handle receiving replies from an execute request and updating outputs in a Notebook model
+  - Supports updating `display_data` content when new `display_data` with `transient` / `display_id` comes in or on `update_display_data`
+### Fixed
+- Was missing `clear_output` model
 
 ## [0.3.2] -- 2023-03-10
 ### Added
