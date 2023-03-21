@@ -93,27 +93,3 @@ class CommManager(Handler):
         """
         logger.debug("unrecognized comm_id", extra={"comm_id": msg.content.comm_id})
         pass
-
-
-class WidgetHandler(CommHandler):
-    def __init__(self, comm_id: str):
-        super().__init__(comm_id)
-        self.state: Dict = {}
-
-    @property
-    def model_name(self):
-        return self.state.get("_model_name", "")
-
-    async def handle_comm_open(self, msg: messages.CommOpen):
-        self.state = msg.content.data["state"]
-
-    async def handle_comm_msg(self, msg: messages.CommMsg):
-        self.state = msg.content.data["state"]
-
-    # Below methods are only used with Output widgets
-    # What will happen is that a special Handler for execute requests will see when a comm_msg
-    # comes across which indicates stream / display_data / error should be directed to the Output
-    # widget instead of the normal cell output. It will look up the comm_id in the CommManager and
-    # await these methods.
-    async def handle_stream(self, msg: messages.Stream):
-        self.state["outputs"].append(msg.content)
