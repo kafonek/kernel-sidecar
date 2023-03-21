@@ -93,26 +93,3 @@ class CommManager(Handler):
         """
         logger.debug("unrecognized comm_id", extra={"comm_id": msg.content.comm_id})
         pass
-
-
-class CommTargetNotFound(Exception):
-    pass
-
-
-class CommOpenHandler(Handler):
-    """
-    Used when sending a comm_open request from sidecar to kernel. If there is no Comm registered
-    for the target_name, the Kernel will say as much in a stream (stderr) reply, and send a
-    comm_close event.
-    """
-
-    def __init__(self):
-        self.comm_err_msg = None
-        self.comm_closed_id = None
-
-    async def handle_stream(self, msg: messages.Stream):
-        if msg.content.name == "stderr":
-            self.comm_err_msg = msg.content.text
-
-    async def handle_comm_close(self, msg: messages.CommClose):
-        self.comm_closed_id = msg.content.comm_id
