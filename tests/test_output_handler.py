@@ -95,7 +95,7 @@ async def test_output_widget(kernel: KernelSidecarClient):
     # So 3 actions: two execute_request, one comm_msg
     assert len(kernel.actions) == 3
     # Await all actions including the comm_msg
-    await asyncio.gather(*kernel.actions.values())
+    await asyncio.wait_for(asyncio.gather(*kernel.actions.values()), timeout=5)
 
     assert builder.nb.cells[0].outputs[1].output_type == "display_data"
     assert builder.nb.cells[0].outputs[1].data["text/plain"] == "Output()"
