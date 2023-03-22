@@ -52,7 +52,8 @@ async def kernel(ipykernel: dict) -> KernelSidecarClient:
         if log_level == logging.DEBUG:
             logging.getLogger("kernel_sidecar").setLevel(logging.INFO)
         logger.critical("Using reset magic to clear Kernel state")
-        await kernel.execute_request(code="%reset -f in out dhist")
+        action = kernel.execute_request(code="%reset -f in out dhist")
+        await asyncio.wait_for(action, timeout=1)
         if log_level == logging.DEBUG:
             logging.getLogger("kernel_sidecar").setLevel(log_level)
 
