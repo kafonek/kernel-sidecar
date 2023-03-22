@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+## [0.4.1] - 2023-03-22
+### Changed
+- All Actions will treat seeing an `error` message as being the same as it's "complete reply" message (e.g. `execute_reply` for `execute_request` Actions)
+  - Hopefully fixes issues with CI, and possibly hard-to-debug edge cases that would pop up in applications. Never observed missing `execute_reply` in tests locally though
+
+### Fixed
+- Remove errant logs left over from 0.4.0 dev/release
 
 ## [0.4.0] - 2023-03-22
 ### Added
