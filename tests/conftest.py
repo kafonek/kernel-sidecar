@@ -8,6 +8,8 @@ from jupyter_client import AsyncKernelClient, manager
 from kernel_sidecar.client import KernelSidecarClient
 from kernel_sidecar.log_utils import setup_logging
 
+logger = logging.getLogger(__name__)
+
 
 @pytest.fixture(scope="session")
 def event_loop():
@@ -37,6 +39,7 @@ async def ipykernel() -> dict:
         try:
             yield kc.get_connection_info()
         finally:
+            logger.critical("Shutting down ipykernel")
             await km.shutdown_kernel()
 
 
