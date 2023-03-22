@@ -17,7 +17,7 @@ comm_id seen in the comm_msg.content.
 import logging
 from typing import Dict, Type, Union
 
-from kernel_sidecar.handlers import Handler
+from kernel_sidecar.handlers.base import Handler
 from kernel_sidecar.models import messages
 
 logger = logging.getLogger(__name__)
@@ -82,6 +82,9 @@ class CommManager(Handler):
         self.handlers[msg.content.target_name] = MyCatchAllHandler
         return await self.handle_comm_open(msg)
         """
+        logger.debug(
+            f"comm_open received with no handler for comm target {msg.content.target_name}"
+        )
         pass
 
     async def handle_unrecognized_comm_id(self, msg: Union[messages.CommMsg, messages.CommClose]):
@@ -93,3 +96,30 @@ class CommManager(Handler):
         """
         logger.debug("unrecognized comm_id", extra={"comm_id": msg.content.comm_id})
         pass
+
+
+class WidgetHandler(CommHandler):
+    def __init__(self, comm_id: str):
+        super().__init__(comm_id)
+        self.state: Dict = {}
+
+    @property
+    def model_name(self):
+        return self.state.get("_model_name", "")
+
+    def __repr__(self):
+        return f"{self.__class__.__name__} ({self.model_name})"
+
+    async def handle_comm_open(self, msg: messages.CommOpen):
+        self.state = msg.content.data["state"]
+
+    async def handle_comm_msg(self, msg: messages.CommMsg):
+        self.state.update(msg.content.data["state"])
+
+    # Below methods are only used with Output widgets
+    # What will happen is that a special Handler for execute requests will see when a comm_msg
+    # comes across which indicates stream / display_data / error should be directed to the Output
+    # widget instead of the normal cell output. It will look up the comm_id in the CommManager and
+    # await these methods.
+    async def handle_stream(self, msg: messages.Stream):
+        self.state["outputs"].append(msg.content)
