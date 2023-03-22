@@ -11,7 +11,7 @@ import asyncio
 import logging
 from typing import List
 
-from kernel_sidecar.handlers import Handler
+from kernel_sidecar.handlers.base import Handler
 from kernel_sidecar.models import messages, requests
 
 logger = logging.getLogger(__name__)
