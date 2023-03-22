@@ -24,15 +24,14 @@ import pydantic
 import zmq
 from jupyter_client import AsyncKernelClient, KernelConnectionInfo
 from jupyter_client.channels import ZMQSocketChannel
-from zmq.asyncio import Context
-from zmq.utils.monitor import recv_monitor_message
-
 from kernel_sidecar import actions
 from kernel_sidecar.comms import CommHandler, CommManager, WidgetHandler
 from kernel_sidecar.handlers.base import Handler
 from kernel_sidecar.models import messages, requests
 from kernel_sidecar.models.notebook import Notebook
 from kernel_sidecar.nb_builder import NotebookBuilder
+from zmq.asyncio import Context
+from zmq.utils.monitor import recv_monitor_message
 
 logger = logging.getLogger(__name__)
 
@@ -430,7 +429,7 @@ class KernelSidecarClient:
         )
 
     async def handle_zmq_disconnect(self, channel_name: str):
-        pass
+        logger.critical("ZMQ channel disconnected", extra={"channel": channel_name})
 
     async def __aenter__(self) -> "KernelSidecarClient":
         # General asyncio comment: make sure tasks always have a reference (assigned to variable or
