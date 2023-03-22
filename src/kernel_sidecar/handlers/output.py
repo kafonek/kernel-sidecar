@@ -101,8 +101,6 @@ class OutputHandler(Handler):
                 # this means we are entering into the "with Output()" context manager
                 # all further output messages (stream, display_data, error) should be added
                 # to this Output widget .outputs instead of to the cell output
-                logger.critical("entering output widget context manager")
                 self.output_widget_contexts.insert(0, comm_handler)
             else:
-                logger.critical("exiting output widget context manager")
                 self.output_widget_contexts.remove(comm_handler)
