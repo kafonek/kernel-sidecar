@@ -103,3 +103,30 @@ async def test_output_widget(kernel: KernelSidecarClient):
     hydrated = builder.hydrate_output_widgets(kernel.comm_manager.comms)
     assert hydrated.cells[0].outputs[1].output_type == "stream"
     assert hydrated.cells[0].outputs[1].text == "baz\n"
+
+
+async def test_error_in_output(kernel: KernelSidecarClient):
+    """
+    Show that the OutputHandler correctly writes state to the Output widget instead of the
+    document model when using "with Output()" syntax. If the NotebookBuilder has context and state
+    for existing comms, it can rehydrate the document model with the widget state to replace widget
+    mimetypes with the outputs stored in the widget state.
+    """
+    builder = kernel.builder
+    cell1 = builder.add_cell(source="from ipywidgets import Output; out = Output(); out")
+    cell2 = builder.add_cell(source="with out: 1/0")
+    await kernel.execute_request(cell1.source, handlers=[OutputHandler(kernel, cell1.id)])
+    await kernel.execute_request(cell2.source, handlers=[OutputHandler(kernel, cell2.id)])
+    # While handling the "with out:" cell, OutputHandler should have sent a comm_msg back to the
+    # Kernel to update the Kernel with the new Output widget state
+    # So 3 actions: two execute_request, one comm_msg
+    assert len(kernel.actions) == 3
+    # Await all actions including the comm_msg syncing output widget state to Kernel
+    await asyncio.gather(*kernel.actions.values())
+
+    assert builder.nb.cells[0].outputs[0].output_type == "execute_result"
+    assert builder.nb.cells[0].outputs[0].data["text/plain"] == "Output()"
+
+    hydrated = builder.hydrate_output_widgets(kernel.comm_manager.comms)
+    assert hydrated.cells[0].outputs[0].output_type == "error"
+    assert hydrated.cells[0].outputs[0].ename == "ZeroDivisionError"

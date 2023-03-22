@@ -143,6 +143,7 @@ class CellStatus(str, enum.Enum):
 # instead the following fields should be present:"
 # https://jupyter-client.readthedocs.io/en/stable/messaging.html#request-reply
 class ErrorContent(BaseModel):
+    output_type: Literal["error"] = "error"
     ename: str
     evalue: str
     traceback: List[str]

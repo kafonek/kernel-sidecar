@@ -31,10 +31,7 @@ class OutputHandler(Handler):
         if self.output_widget_contexts:  # in Output context, don't update document model
             handler: WidgetHandler = self.output_widget_contexts[0]
             handler.state["outputs"].append(content)
-            self.client.comm_msg_request(
-                comm_id=handler.comm_id,
-                data={"method": "update", "state": {"outputs": handler.state["outputs"]}},
-            )
+            await self.sync_output_widget_state(handler)
         else:  # not in Output widget context, just update Notebook document model
             self.client.builder.add_output(self.cell_id, content)
 
@@ -42,12 +39,15 @@ class OutputHandler(Handler):
         if self.output_widget_contexts:
             handler: WidgetHandler = self.output_widget_contexts[0]
             handler.state["outputs"] = []
-            self.client.comm_msg_request(
-                comm_id=handler.comm_id,
-                data={"method": "update", "state": {"outputs": handler.state["outputs"]}},
-            )
+            await self.sync_output_widget_state(handler)
         else:
             self.client.builder.clear_output(self.cell_id)
+
+    async def sync_output_widget_state(self, handler: WidgetHandler):
+        self.client.comm_msg_request(
+            comm_id=handler.comm_id,
+            data={"method": "update", "state": {"outputs": handler.state["outputs"]}},
+        )
 
     async def handle_stream(self, msg: messages.Stream):
         if self.clear_on_next_output:
