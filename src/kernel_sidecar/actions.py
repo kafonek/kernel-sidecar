@@ -87,15 +87,20 @@ class KernelAction:
 
     async def handle_message(self, msg: messages.Message):
         """Delegate message to the appropriate handler defined in subclasses"""
+        # Delegate the message to any attached handlers, in the order they were attached
+        for handler in self.handlers:
+            await handler(msg)
+
         # Checking for status / special reply type in order to maybe set "done"
+        # I've noticed in CI that sometimes when we get an `error` message back on execute requests,
+        # the execute_reply never comes through and actions get stuck being awaited forever. This
+        # feels very strange, but we're probably safe to work around it by also saying an Action is
+        # "done" if an error comes through and kernel goes to idle. No other messages are going to
+        # come in and need to be handled after the error.
         if msg.msg_type == "status":
             if msg.content.execution_state == "idle":
                 self.kernel_idle.set()
                 self.maybe_set_done()
-        elif msg.msg_type == self.expected_reply_msg_type:
+        elif msg.msg_type == self.expected_reply_msg_type or msg.msg_type == "error":
             self.reply_seen.set()
             self.maybe_set_done()
-
-        # Delegate the message to any attached handlers, in the order they were attached
-        for handler in self.handlers:
-            await handler(msg)
