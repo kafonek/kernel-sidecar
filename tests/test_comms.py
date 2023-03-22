@@ -3,7 +3,7 @@ import textwrap
 import pytest
 from kernel_sidecar.client import CommTargetNotFound, KernelSidecarClient
 from kernel_sidecar.comms import CommHandler
-from kernel_sidecar.handlers import DebugHandler
+from kernel_sidecar.handlers.debug import DebugHandler
 from kernel_sidecar.models import messages
 
 
