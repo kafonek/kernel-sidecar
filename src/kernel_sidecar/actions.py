@@ -92,7 +92,7 @@ class KernelAction:
             if msg.content.execution_state == "idle":
                 self.kernel_idle.set()
                 self.maybe_set_done()
-        elif msg.msg_type == self.expected_reply_msg_type:
+        elif msg.msg_type == self.expected_reply_msg_type or msg.msg_type == "error":
             self.reply_seen.set()
             self.maybe_set_done()
 
