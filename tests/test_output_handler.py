@@ -88,14 +88,16 @@ async def test_output_widget(kernel: KernelSidecarClient):
     )
     cell1 = builder.add_cell(source=code)
     cell2 = builder.add_cell(source="with out: print('baz')")
-    await kernel.execute_request(cell1.source, handlers=[OutputHandler(kernel, cell1.id)])
-    await kernel.execute_request(cell2.source, handlers=[OutputHandler(kernel, cell2.id)])
+    action1 = kernel.execute_request(cell1.source, handlers=[OutputHandler(kernel, cell1.id)])
+    await asyncio.wait_for(action1, timeout=10)
+    action2 = kernel.execute_request(cell2.source, handlers=[OutputHandler(kernel, cell2.id)])
+    await asyncio.wait_for(action2, timeout=10)
     # While handling the "with out:" cell, OutputHandler should have sent a comm_msg back to the
     # Kernel to update the Kernel with the new Output widget state
     # So 3 actions: two execute_request, one comm_msg
     assert len(kernel.actions) == 3
     # Await all actions including the comm_msg
-    await asyncio.gather(*kernel.actions.values())
+    await asyncio.wait_for(asyncio.gather(*kernel.actions.values()), timeout=10)
 
     assert builder.nb.cells[0].outputs[1].output_type == "display_data"
     assert builder.nb.cells[0].outputs[1].data["text/plain"] == "Output()"
