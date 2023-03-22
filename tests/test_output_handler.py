@@ -115,14 +115,16 @@ async def test_error_in_output(kernel: KernelSidecarClient):
     builder = kernel.builder
     cell1 = builder.add_cell(source="from ipywidgets import Output; out = Output(); out")
     cell2 = builder.add_cell(source="with out: 1/0")
-    await kernel.execute_request(cell1.source, handlers=[OutputHandler(kernel, cell1.id)])
-    await kernel.execute_request(cell2.source, handlers=[OutputHandler(kernel, cell2.id)])
+    action1 = kernel.execute_request(cell1.source, handlers=[OutputHandler(kernel, cell1.id)])
+    await asyncio.wait_for(action1, timeout=10)
+    action2 = kernel.execute_request(cell2.source, handlers=[OutputHandler(kernel, cell2.id)])
+    await asyncio.wait_for(action2, timeout=10)
     # While handling the "with out:" cell, OutputHandler should have sent a comm_msg back to the
     # Kernel to update the Kernel with the new Output widget state
     # So 3 actions: two execute_request, one comm_msg
     assert len(kernel.actions) == 3
     # Await all actions including the comm_msg syncing output widget state to Kernel
-    await asyncio.gather(*kernel.actions.values())
+    await asyncio.wait_for(await asyncio.gather(*kernel.actions.values()), timeout=10)
 
     assert builder.nb.cells[0].outputs[0].output_type == "execute_result"
     assert builder.nb.cells[0].outputs[0].data["text/plain"] == "Output()"
