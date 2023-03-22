@@ -3,7 +3,7 @@ from typing import Optional
 
 from jupyter_client import KernelConnectionInfo
 from kernel_sidecar.client import KernelSidecarClient
-from kernel_sidecar.handlers import DebugHandler
+from kernel_sidecar.handlers.debug import DebugHandler
 
 
 class DisconnectHandlingClient(KernelSidecarClient):

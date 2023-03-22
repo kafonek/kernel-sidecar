@@ -7,8 +7,10 @@ from typing import Optional
 
 import typer
 from jupyter_client import KernelConnectionInfo
+
 from kernel_sidecar.client import KernelSidecarClient
-from kernel_sidecar.handlers import DebugHandler, Handler
+from kernel_sidecar.handlers.base import Handler
+from kernel_sidecar.handlers.debug import DebugHandler
 from kernel_sidecar.log_utils import setup_logging
 from kernel_sidecar.models import messages
 

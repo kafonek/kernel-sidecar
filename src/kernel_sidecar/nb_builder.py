@@ -9,9 +9,17 @@ from typing import Dict, Optional, Union
 
 import pydantic
 
+from kernel_sidecar.comms import WidgetHandler
 from kernel_sidecar.models import messages, notebook
 
 logger = logging.getLogger(__name__)
+
+ContentType = Union[
+    messages.ExecuteResultContent,
+    messages.StreamContent,
+    messages.ErrorContent,
+    messages.DisplayDataContent,
+]
 
 
 class NotebookBuilder:
@@ -35,12 +43,7 @@ class NotebookBuilder:
     def add_output(
         self,
         cell_id: str,
-        content: Union[
-            messages.ExecuteResultContent,
-            messages.StreamContent,
-            messages.ErrorContent,
-            messages.DisplayDataContent,
-        ],
+        content: ContentType,
     ):
         cell = self.get_cell(cell_id)
         if not cell:
@@ -64,3 +67,28 @@ class NotebookBuilder:
                 if isinstance(output, messages.DisplayDataContent):
                     if output.display_id == content.display_id:
                         cell.outputs[idx] = content
+
+    def hydrate_output_widgets(self, comms: Dict[str, WidgetHandler]) -> notebook.Notebook:
+        widget_mimetype = "application/vnd.jupyter.widget-view+json"
+        cleaned = self.nb.copy(deep=True)
+        for cell in cleaned.cells:
+            for idx, output in enumerate(cell.outputs):
+                if isinstance(output, (messages.DisplayDataContent, messages.ExecuteResultContent)):
+                    if widget_mimetype in output.data:
+                        comm_id = output.data[widget_mimetype]["model_id"]
+                        if comm_id not in comms:
+                            logger.warning(
+                                f"Comm id {comm_id} listed in output but not in comm dict"
+                            )
+                        else:
+                            comm = comms[comm_id]
+                            if comm.model_name == "OutputModel":
+                                cell.outputs.pop(idx)
+                                for widget_output in comm.state["outputs"]:
+                                    model = pydantic.parse_obj_as(
+                                        notebook.CellOutput, widget_output
+                                    )
+                                    cell.outputs.insert(idx, model)
+                                    idx += 1
+
+        return cleaned

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 from kernel_sidecar import actions
 from kernel_sidecar.client import KernelSidecarClient
-from kernel_sidecar.handlers import DebugHandler
+from kernel_sidecar.handlers.debug import DebugHandler
 from kernel_sidecar.models import messages, requests
 
 

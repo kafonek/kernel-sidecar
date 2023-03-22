@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `OutputHandler` and a `NotebookBuilder` to handle receiving replies from an execute request and updating outputs in a Notebook model
   - Supports updating `display_data` content when new `display_data` with `transient` / `display_id` comes in or on `update_display_data`
+  - Supports writing state to `Output` widgets, sending `comm_msg` back to Kernel to update that, and rehydrating a document model with Output widget state
+
 ### Fixed
 - Was missing `clear_output` model
 
