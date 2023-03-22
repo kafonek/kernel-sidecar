@@ -124,7 +124,7 @@ async def test_error_in_output(kernel: KernelSidecarClient):
     # So 3 actions: two execute_request, one comm_msg
     assert len(kernel.actions) == 3
     # Await all actions including the comm_msg syncing output widget state to Kernel
-    await asyncio.wait_for(await asyncio.gather(*kernel.actions.values()), timeout=10)
+    await asyncio.wait_for(asyncio.gather(*kernel.actions.values()), timeout=10)
 
     assert builder.nb.cells[0].outputs[0].output_type == "execute_result"
     assert builder.nb.cells[0].outputs[0].data["text/plain"] == "Output()"
