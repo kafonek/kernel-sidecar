@@ -5,7 +5,7 @@ The KernelSidecarClient manages sending and receiving messages over zmq, and kee
 Use:
 
 from kernel_sidecar.client import KernelSidecarClient
-from kernel_sidecar.handlers import DebugHandler
+from kernel_sidecar.handlers.debug import DebugHandler
 
 async with KernelSidecarClient(connection_info) as client:
     handler = DebugHandler()
@@ -28,9 +28,11 @@ from zmq.asyncio import Context
 from zmq.utils.monitor import recv_monitor_message
 
 from kernel_sidecar import actions
-from kernel_sidecar.comms import CommHandler, CommManager
-from kernel_sidecar.handlers import Handler
+from kernel_sidecar.comms import CommHandler, CommManager, WidgetHandler
+from kernel_sidecar.handlers.base import Handler
 from kernel_sidecar.models import messages, requests
+from kernel_sidecar.models.notebook import Notebook
+from kernel_sidecar.nb_builder import NotebookBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +85,7 @@ class KernelSidecarClient:
         max_message_size: Optional[int] = None,
         default_handlers: List[Handler] = None,
         comm_manager: Optional[CommManager] = None,
+        builder: NotebookBuilder = None,
     ):
         """
         - connection_info: dict with zmq ports the Kernel has open
@@ -122,7 +125,8 @@ class KernelSidecarClient:
             raise RuntimeError(f"{default_handlers=} must be None or a list")
         self.default_handlers = default_handlers or []
 
-        self.comm_manager = comm_manager or CommManager()
+        self.comm_manager = comm_manager or CommManager(handlers={"jupyter.widget": WidgetHandler})
+        self.builder = builder or NotebookBuilder(nb=Notebook())
 
     @property
     def running_action(self):
