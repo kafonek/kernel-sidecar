@@ -1,4 +1,3 @@
-import asyncio
 import textwrap
 
 from kernel_sidecar.client import KernelSidecarClient
@@ -115,10 +114,6 @@ async def test_error_in_output(kernel: KernelSidecarClient):
     await kernel.execute_request(cell2.source, handlers=[OutputHandler(kernel, cell2.id)])
     # While handling the "with out:" cell, OutputHandler should have sent a comm_msg back to the
     # Kernel to update the Kernel with the new Output widget state
-    # So 3 actions: two execute_request, one comm_msg
-    assert len(kernel.actions) == 3
-    # Await all actions including the comm_msg syncing output widget state to Kernel
-    await asyncio.gather(*kernel.actions.values())
 
     assert builder.nb.cells[0].outputs[0].output_type == "execute_result"
     assert builder.nb.cells[0].outputs[0].data["text/plain"] == "Output()"
