@@ -34,6 +34,7 @@ async def ipykernel() -> dict:
         logger.info(f"Using connection info from: {os.environ['IPYKERNEL_TEST_CONNECTION_FILE']}")
         yield json.load(open(os.environ["IPYKERNEL_TEST_CONNECTION_FILE"]))
     else:
+        logger.info("Starting new AsyncKernel using jupyter_client")
         km: manager.AsyncKernelManager
         kc: AsyncKernelClient
         km, kc = await manager.start_new_async_kernel()
