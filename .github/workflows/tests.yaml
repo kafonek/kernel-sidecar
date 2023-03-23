@@ -30,4 +30,7 @@ jobs:
         run: poetry install
 
       - name: Run tests
+        env:
+          PYTHONASYNCIODEBUG: "1"
+          
         run: poetry run pytest --reruns 5 --log-level DEBUG -s
