@@ -31,6 +31,7 @@ async def ipykernel() -> dict:
     IPYKERNEL_TEST_CONNECTION_FILE=/tmp/kernel.json pytest
     """
     if "IPYKERNEL_TEST_CONNECTION_FILE" in os.environ:
+        logger.info(f"Using connection info from: {os.environ['IPYKERNEL_TEST_CONNECTION_FILE']}")
         yield json.load(open(os.environ["IPYKERNEL_TEST_CONNECTION_FILE"]))
     else:
         km: manager.AsyncKernelManager
