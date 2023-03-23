@@ -30,7 +30,7 @@ jobs:
         run: poetry install
 
       - name: Start Ipykernel
-        run: poetry run python -m ipykernel_launcher --debug -f /tmp/kernel.json & export KERNEL_PID=$!
+        run: poetry run python -m ipykernel_launcher --debug -f /tmp/kernel.json & echo "pid=$!" >> $GITHUB_OUTPUT
 
       - name: Run tests
         env:
@@ -39,6 +39,4 @@ jobs:
 
       - name: Stop Ipykernel
         if: always()
-        env:
-          KERNEL_PID: ${{ env.KERNEL_PID }}
-        run: kill $KERNEL_PID
+        run: kill ${{ steps.start-ipykernel.outputs.pid }}
