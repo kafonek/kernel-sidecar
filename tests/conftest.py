@@ -74,3 +74,13 @@ def configure_logging():
     to process both structlog-emitted logs and vanilla logs (which kernel-sidecar emits)
     """
     setup_logging()
+
+
+@pytest.fixture(autouse=True)
+def list_asyncio_tasks():
+    """
+    List all asyncio tasks after each test, to help debug hanging tests
+    """
+    logger.info(f"Active asyncio tasks before test: {asyncio.all_tasks()}")
+    yield
+    logger.info(f"Active asyncio tasks after test: {asyncio.all_tasks()}")
