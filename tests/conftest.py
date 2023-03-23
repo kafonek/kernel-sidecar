@@ -8,6 +8,8 @@ from jupyter_client import AsyncKernelClient, manager
 from kernel_sidecar.client import KernelSidecarClient
 from kernel_sidecar.log_utils import setup_logging
 
+logger = logging.getLogger(__name__)
+
 
 @pytest.fixture(scope="session")
 def event_loop():
@@ -45,12 +47,16 @@ async def kernel(ipykernel: dict) -> KernelSidecarClient:
     async with KernelSidecarClient(connection_info=ipykernel) as kernel:
         yield kernel
         # reset namespace after test is done, turn off debug logs if they're on to reduce noise
-        log_level = logging.getLogger("kernel_sidecar").getEffectiveLevel()
-        if log_level == logging.DEBUG:
-            logging.getLogger("kernel_sidecar").setLevel(logging.INFO)
-        await kernel.execute_request(code="%reset -f in out dhist")
-        if log_level == logging.DEBUG:
-            logging.getLogger("kernel_sidecar").setLevel(log_level)
+        # log_level = logging.getLogger("kernel_sidecar").getEffectiveLevel()
+        # if log_level == logging.DEBUG:
+        #     logging.getLogger("kernel_sidecar").setLevel(logging.INFO)
+        try:
+            action = kernel.execute_request(code="%reset -f in out dhist")
+            await asyncio.wait_for(action, timeout=3)
+        except asyncio.TimeoutError:
+            logger.warning("Timeout waiting for kernel to %reset namespace")
+        # if log_level == logging.DEBUG:
+        #     logging.getLogger("kernel_sidecar").setLevel(log_level)
 
 
 @pytest.fixture(autouse=True)
