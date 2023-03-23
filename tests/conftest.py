@@ -39,6 +39,7 @@ async def ipykernel() -> dict:
         try:
             yield kc.get_connection_info()
         finally:
+            logger.info("Tests completed, shutting down ipykernel")
             try:
                 await asyncio.wait_for(km.shutdown_kernel(), timeout=5)
             except asyncio.TimeoutError:
