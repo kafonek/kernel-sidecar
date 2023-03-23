@@ -24,15 +24,14 @@ import pydantic
 import zmq
 from jupyter_client import AsyncKernelClient, KernelConnectionInfo
 from jupyter_client.channels import ZMQSocketChannel
-from zmq.asyncio import Context
-from zmq.utils.monitor import recv_monitor_message
-
 from kernel_sidecar import actions
 from kernel_sidecar.comms import CommHandler, CommManager, WidgetHandler
 from kernel_sidecar.handlers.base import Handler
 from kernel_sidecar.models import messages, requests
 from kernel_sidecar.models.notebook import Notebook
 from kernel_sidecar.nb_builder import NotebookBuilder
+from zmq.asyncio import Context
+from zmq.utils.monitor import recv_monitor_message
 
 logger = logging.getLogger(__name__)
 
@@ -389,7 +388,7 @@ class KernelSidecarClient:
 
                 action = self.actions[msg.parent_header.msg_id]
                 ra = self.running_action
-                if ra and ra.msg_id != action.msg_id:
+                if ra and ra is not action:
                     logger.warning(
                         f"Observed message for {action} while {ra} has not completed. This is a "
                         "sign that expected messages didn't come over ZMQ or the Action needs a "
@@ -398,6 +397,7 @@ class KernelSidecarClient:
                     )
 
                     ra.done.set()
+                    ra.running = False
                 await asyncio.wait_for(action.handle_message(msg), timeout=self._handler_timeout)
 
             except pydantic.ValidationError as e:
