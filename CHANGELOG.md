@@ -6,6 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.4.1] - 2023-03-23
 ### Changed
 - Try to guard against deadlocked / awaiting-forever Actions by checking if incoming messages have a parent header msg_id for a different Action than what we think is running
 - Try to harden CI test runs, many of which were getting stuck during fixture teardowns at the end of the test runs
