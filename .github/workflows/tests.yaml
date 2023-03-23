@@ -39,4 +39,4 @@ jobs:
 
       - name: Stop Ipykernel
         if: always()
-        run: kill "${{ env.KERNEL_PID }}""
+        run: kill "${{ env.KERNEL_PID }}"
