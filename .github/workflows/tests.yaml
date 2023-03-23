@@ -35,7 +35,7 @@ jobs:
       - name: Run tests
         env:
           IPYKERNEL_TEST_CONNECTION_FILE: /tmp/kernel.json
-        run: poetry run pytest --reruns 5 -s
+        run: poetry run pytest --reruns 5 -s --log-level DEBUG
 
       - name: Stop Ipykernel
         if: always()
