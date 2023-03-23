@@ -16,6 +16,19 @@ def event_loop():
     return asyncio.get_event_loop()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def configure_logging():
+    """
+    Configure Structlog to log messages with `ConsoleRenderer` at the log level passed in to pytest:
+     - pytest --log-level DEBUG -s
+     - pytest --log-level INFO -s
+
+    See log_utils.py for more comments and example of how you would set up structlog in your own app
+    to process both structlog-emitted logs and vanilla logs (which kernel-sidecar emits)
+    """
+    setup_logging()
+
+
 @pytest.fixture(scope="session")
 async def ipykernel() -> dict:
     """
@@ -34,6 +47,7 @@ async def ipykernel() -> dict:
         logger.info(f"Using connection info from: {os.environ['IPYKERNEL_TEST_CONNECTION_FILE']}")
         yield json.load(open(os.environ["IPYKERNEL_TEST_CONNECTION_FILE"]))
     else:
+        logger.info("Starting new AsyncKernel using jupyter_client")
         km: manager.AsyncKernelManager
         kc: AsyncKernelClient
         km, kc = await manager.start_new_async_kernel()
@@ -62,16 +76,3 @@ async def kernel(ipykernel: dict) -> KernelSidecarClient:
             logger.warning("Timed out waiting to %reset Kernel namespace")
         if log_level == logging.DEBUG:
             logging.getLogger("kernel_sidecar").setLevel(log_level)
-
-
-@pytest.fixture(autouse=True)
-def configure_logging():
-    """
-    Configure Structlog to log messages with `ConsoleRenderer` at the log level passed in to pytest:
-     - pytest --log-level DEBUG -s
-     - pytest --log-level INFO -s
-
-    See log_utils.py for more comments and example of how you would set up structlog in your own app
-    to process both structlog-emitted logs and vanilla logs (which kernel-sidecar emits)
-    """
-    setup_logging()
