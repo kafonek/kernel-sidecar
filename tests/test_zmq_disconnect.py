@@ -1,3 +1,4 @@
+import asyncio
 import collections
 from typing import Optional
 
@@ -41,6 +42,6 @@ async def test_zmq_disconnect(ipykernel: dict):
 
         # A stream size larger than max_message_size should cause a disconnect
         handler = DebugHandler()
-        action = kernel.execute_request(code=" print('x' * 2048)", handlers=[handler])
-        await action
+        action = kernel.execute_request(code="print('x' * 2048)", handlers=[handler])
+        await asyncio.wait_for(action, timeout=5)
         assert kernel.channel_disconnects == {"iopub": 1}
