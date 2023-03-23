@@ -39,7 +39,11 @@ async def ipykernel() -> dict:
         try:
             yield kc.get_connection_info()
         finally:
-            await km.shutdown_kernel()
+            logger.info("Tests completed, shutting down ipykernel")
+            try:
+                await asyncio.wait_for(km.shutdown_kernel(), timeout=5)
+            except asyncio.TimeoutError:
+                logger.warning("Timed out waiting for kernel shutdown")
 
 
 @pytest.fixture
@@ -47,16 +51,16 @@ async def kernel(ipykernel: dict) -> KernelSidecarClient:
     async with KernelSidecarClient(connection_info=ipykernel) as kernel:
         yield kernel
         # reset namespace after test is done, turn off debug logs if they're on to reduce noise
-        # log_level = logging.getLogger("kernel_sidecar").getEffectiveLevel()
-        # if log_level == logging.DEBUG:
-        #     logging.getLogger("kernel_sidecar").setLevel(logging.INFO)
+        log_level = logging.getLogger("kernel_sidecar").getEffectiveLevel()
+        if log_level == logging.DEBUG:
+            logging.getLogger("kernel_sidecar").setLevel(logging.INFO)
         try:
             action = kernel.execute_request(code="%reset -f in out dhist")
             await asyncio.wait_for(action, timeout=3)
         except asyncio.TimeoutError:
-            logger.warning("Timeout waiting for kernel to %reset namespace")
-        # if log_level == logging.DEBUG:
-        #     logging.getLogger("kernel_sidecar").setLevel(log_level)
+            logger.warning("Timed out waiting to %reset Kernel namespace")
+        if log_level == logging.DEBUG:
+            logging.getLogger("kernel_sidecar").setLevel(log_level)
 
 
 @pytest.fixture(autouse=True)

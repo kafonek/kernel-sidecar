@@ -20,7 +20,9 @@ class DisconnectHandlingClient(KernelSidecarClient):
         # the currently-running action to never resolve it's "done" event (await action).
         # For this test class, "resolve" the awaitable as soon as a disconnect happens.
         # You might want to do something different in your own prod app
-        self.running_action.done.set()
+        if self.running_action:
+            self.running_action.done.set()
+            self.running_action.running = False
         self.channel_disconnects[channel_name] += 1
 
 
