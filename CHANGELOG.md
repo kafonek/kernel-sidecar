@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+- Try to guard against deadlocked / awaiting-forever Actions by checking if incoming messages have a parent header msg_id for a different Action than what we think is running
+- Try to harden CI test runs, many of which were getting stuck during fixture teardowns at the end of the test runs
+- 
+### Fixed
+- Revert some critical logs to debug, accidentally left over from Output widget handler development
+
 ## [0.4.0] - 2023-03-22
 ### Added
 - `OutputHandler` and a `NotebookBuilder` to handle receiving replies from an execute request and updating outputs in a Notebook model

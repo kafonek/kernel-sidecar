@@ -8,6 +8,8 @@ from jupyter_client import AsyncKernelClient, manager
 from kernel_sidecar.client import KernelSidecarClient
 from kernel_sidecar.log_utils import setup_logging
 
+logger = logging.getLogger(__name__)
+
 
 @pytest.fixture(scope="session")
 def event_loop():
@@ -37,7 +39,11 @@ async def ipykernel() -> dict:
         try:
             yield kc.get_connection_info()
         finally:
-            await km.shutdown_kernel()
+            logger.info("Tests completed, shutting down ipykernel")
+            try:
+                await asyncio.wait_for(km.shutdown_kernel(), timeout=5)
+            except asyncio.TimeoutError:
+                logger.warning("Timed out waiting for kernel shutdown")
 
 
 @pytest.fixture
@@ -48,7 +54,11 @@ async def kernel(ipykernel: dict) -> KernelSidecarClient:
         log_level = logging.getLogger("kernel_sidecar").getEffectiveLevel()
         if log_level == logging.DEBUG:
             logging.getLogger("kernel_sidecar").setLevel(logging.INFO)
-        await kernel.execute_request(code="%reset -f in out dhist")
+        try:
+            action = kernel.execute_request(code="%reset -f in out dhist")
+            await asyncio.wait_for(action, timeout=3)
+        except asyncio.TimeoutError:
+            logger.warning("Timed out waiting to %reset Kernel namespace")
         if log_level == logging.DEBUG:
             logging.getLogger("kernel_sidecar").setLevel(log_level)
 

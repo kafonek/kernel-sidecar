@@ -47,6 +47,7 @@ class KernelAction:
         self.expected_reply_msg_type = self.REPLY_MSG_TYPES[request.header.msg_type]
 
         # Events tied to making this instance awaitable
+        self.running = False
         self.kernel_idle = asyncio.Event()
         self.reply_seen = asyncio.Event()
         self.done = asyncio.Event()
@@ -84,18 +85,21 @@ class KernelAction:
         if self.kernel_idle.is_set():
             if self.reply_seen.is_set() or not self.expected_reply_msg_type:
                 self.done.set()
+                self.running = False
 
     async def handle_message(self, msg: messages.Message):
         """Delegate message to the appropriate handler defined in subclasses"""
+        # Delegate the message to any attached handlers, in the order they were attached
+        for handler in self.handlers:
+            await handler(msg)
+
         # Checking for status / special reply type in order to maybe set "done"
         if msg.msg_type == "status":
-            if msg.content.execution_state == "idle":
+            if msg.content.execution_state == "busy":
+                self.running = True
+            elif msg.content.execution_state == "idle":
                 self.kernel_idle.set()
                 self.maybe_set_done()
         elif msg.msg_type == self.expected_reply_msg_type:
             self.reply_seen.set()
             self.maybe_set_done()
-
-        # Delegate the message to any attached handlers, in the order they were attached
-        for handler in self.handlers:
-            await handler(msg)
