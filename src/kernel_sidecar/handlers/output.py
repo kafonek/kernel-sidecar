@@ -5,9 +5,15 @@ from kernel_sidecar.client import KernelSidecarClient
 from kernel_sidecar.comms import WidgetHandler
 from kernel_sidecar.handlers.base import Handler
 from kernel_sidecar.models import messages
-from kernel_sidecar.nb_builder import ContentType, NotebookBuilder
 
 logger = logging.getLogger(__name__)
+
+ContentType = Union[
+    messages.ExecuteResultContent,
+    messages.StreamContent,
+    messages.ErrorContent,
+    messages.DisplayDataContent,
+]
 
 
 class OutputHandler(Handler):
@@ -135,34 +141,3 @@ class OutputHandler(Handler):
             else:
                 logger.debug("exiting output widget context manager")
                 self.output_widget_contexts.remove(comm_handler)
-
-
-class SimpleOutputHandler(OutputHandler):
-    """
-    Update a NotebookBuilder instance while handling execute_request responses. See the
-    NotebookBuilder class for moe details, but in a nutshell it updates the Pydantic-modeled
-    in-memory Notebook document when adding/clearing content or syncing display data, as well as
-    keeping Output widget state to hydrate Output widgets in display_data/execute_result content
-    to replace the Output widget mimetype with actual output content.
-    """
-
-    def __init__(self, client: KernelSidecarClient, cell_id: str, builder: NotebookBuilder):
-        super().__init__(client, cell_id)
-        self.builder = builder
-
-    async def add_cell_content(self, content: ContentType):
-        self.builder.add_cell_output(self.cell_id, content)
-
-    async def clear_cell_content(self):
-        self.builder.clear_cell_output(self.cell_id)
-
-    async def add_output_widget_content(self, handler: WidgetHandler, content: ContentType):
-        self.builder.output_widget_state[handler.comm_id] = handler.state["outputs"]
-
-    async def clear_output_widget_content(self, handler: WidgetHandler):
-        self.builder.output_widget_state[handler.comm_id] = handler.state["outputs"]
-
-    async def sync_display_data(
-        self, content: Union[messages.DisplayDataContent, messages.UpdateDisplayDataContent]
-    ):
-        self.builder.replace_display_data(content)

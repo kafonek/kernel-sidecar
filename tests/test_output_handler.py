@@ -3,9 +3,8 @@ import textwrap
 
 import pytest
 from kernel_sidecar.client import KernelSidecarClient
-from kernel_sidecar.handlers.output import SimpleOutputHandler
 from kernel_sidecar.models.notebook import Notebook
-from kernel_sidecar.nb_builder import NotebookBuilder
+from kernel_sidecar.nb_builder import NotebookBuilder, SimpleOutputHandler
 
 
 @pytest.fixture
