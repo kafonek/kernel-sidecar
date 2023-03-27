@@ -40,11 +40,11 @@ class OutputHandler(Handler):
         # Override in subclasses
         pass
 
-    async def add_output_widget_content(self, content: ContentType):
+    async def add_output_widget_content(self, handler: WidgetHandler, content: ContentType):
         # Override in subclasses
         pass
 
-    async def clear_output_widget_content(self):
+    async def clear_output_widget_content(self, handler: WidgetHandler):
         # Override in subclasses
         pass
 
@@ -59,7 +59,7 @@ class OutputHandler(Handler):
             handler: WidgetHandler = self.output_widget_contexts[0]
             handler.state["outputs"].append(content)
             await self.sync_output_widget_state(handler)
-            await self.add_output_widget_content(content)
+            await self.add_output_widget_content(handler, content)
         else:  # not in Output widget context, just update Notebook document model
             await self.add_cell_content(content)
 
@@ -68,7 +68,7 @@ class OutputHandler(Handler):
             handler: WidgetHandler = self.output_widget_contexts[0]
             handler.state["outputs"] = []
             await self.sync_output_widget_state(handler)
-            await self.clear_output_widget_content()
+            await self.clear_output_widget_content(handler)
         else:
             await self.clear_cell_content()
 
@@ -156,13 +156,11 @@ class SimpleOutputHandler(OutputHandler):
     async def clear_cell_content(self):
         self.builder.clear_cell_output(self.cell_id)
 
-    async def add_output_widget_content(self, content: ContentType):
-        output_widget = self.output_widget_contexts[0]
-        self.builder.output_widget_state[output_widget.comm_id] = output_widget.state["outputs"]
+    async def add_output_widget_content(self, handler: WidgetHandler, content: ContentType):
+        self.builder.output_widget_state[handler.comm_id] = handler.state["outputs"]
 
-    async def clear_output_widget_content(self):
-        output_widget = self.output_widget_contexts[0]
-        self.builder.output_widget_state[output_widget.comm_id] = output_widget.state["outputs"]
+    async def clear_output_widget_content(self, handler: WidgetHandler):
+        self.builder.output_widget_state[handler.comm_id] = handler.state["outputs"]
 
     async def sync_display_data(
         self, content: Union[messages.DisplayDataContent, messages.UpdateDisplayDataContent]
