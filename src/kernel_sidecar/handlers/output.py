@@ -1,11 +1,11 @@
 import logging
-from typing import List
+from typing import List, Union
 
 from kernel_sidecar.client import KernelSidecarClient
 from kernel_sidecar.comms import WidgetHandler
 from kernel_sidecar.handlers.base import Handler
 from kernel_sidecar.models import messages
-from kernel_sidecar.nb_builder import ContentType
+from kernel_sidecar.nb_builder import ContentType, NotebookBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -27,21 +27,50 @@ class OutputHandler(Handler):
         # to the document model
         self.output_widget_contexts: List[WidgetHandler] = []
 
-    async def add_output(self, content: ContentType):
-        if self.output_widget_contexts:  # in Output context, don't update document model
+    # The following five methods should be overridden to update the document model using your own
+    # Notebook builder implementation. The methods below that probably don't need to be overridden,
+    # and take care of calling these five methods in the correct contexts (i.e. Output widget
+    # context vs regular cell output, syncing Output widget content back to Kernel over comms,
+    # clear_output(wait=True), and display data syncs)
+    async def add_cell_content(self, content: ContentType):
+        # Override in subclasses
+        pass
+
+    async def clear_cell_content(self):
+        # Override in subclasses
+        pass
+
+    async def add_output_widget_content(self, content: ContentType):
+        # Override in subclasses
+        pass
+
+    async def clear_output_widget_content(self):
+        # Override in subclasses
+        pass
+
+    async def sync_display_data(
+        self, content: Union[messages.DisplayDataContent, messages.UpdateDisplayDataContent]
+    ):
+        # Override in subclasses
+        pass
+
+    async def add_content(self, content: ContentType):
+        if self.output_widget_contexts:  # inside a "with out:" Output widget context
             handler: WidgetHandler = self.output_widget_contexts[0]
             handler.state["outputs"].append(content)
             await self.sync_output_widget_state(handler)
+            await self.add_output_widget_content(content)
         else:  # not in Output widget context, just update Notebook document model
-            self.client.builder.add_output(self.cell_id, content)
+            await self.add_cell_content(content)
 
-    async def clear_output(self):
+    async def clear_content(self):
         if self.output_widget_contexts:
             handler: WidgetHandler = self.output_widget_contexts[0]
             handler.state["outputs"] = []
             await self.sync_output_widget_state(handler)
+            await self.clear_output_widget_content()
         else:
-            self.client.builder.clear_output(self.cell_id)
+            await self.clear_cell_content()
 
     async def sync_output_widget_state(self, handler: WidgetHandler):
         self.client.comm_msg_request(
@@ -51,38 +80,38 @@ class OutputHandler(Handler):
 
     async def handle_stream(self, msg: messages.Stream):
         if self.clear_on_next_output:
-            await self.clear_output()
+            await self.clear_content()
             self.clear_on_next_output = False
-        await self.add_output(msg.content)
+        await self.add_content(msg.content)
 
     async def handle_execute_result(self, msg: messages.ExecuteResult):
         if self.clear_on_next_output:
-            await self.clear_output()
+            await self.clear_content()
             self.clear_on_next_output = False
-        await self.add_output(msg.content)
+        await self.add_content(msg.content)
 
     async def handle_error(self, msg: messages.Error):
         if self.clear_on_next_output:
-            await self.clear_output()
+            await self.clear_content()
             self.clear_on_next_output = False
-        await self.add_output(msg.content)
+        await self.add_content(msg.content)
 
     async def handle_display_data(self, msg: messages.DisplayData):
         if self.clear_on_next_output:
-            await self.clear_output()
+            await self.clear_content()
             self.clear_on_next_output = False
-        await self.add_output(msg.content)
+        await self.add_content(msg.content)
         if msg.content.display_id:
-            self.client.builder.replace_display_data(msg.content)
+            await self.sync_display_data(msg.content)
 
     async def handle_update_display_data(self, msg: messages.UpdateDisplayData):
-        self.client.builder.replace_display_data(msg.content)
+        await self.sync_display_data(msg.content)
 
     async def handle_clear_output(self, msg: messages.ClearOutput):
         if msg.content.wait:
             self.clear_on_next_output = True
         else:
-            await self.clear_output()
+            await self.clear_content()
 
     async def handle_comm_msg(self, msg: messages.CommMsg):
         # Exit early if:
@@ -106,3 +135,36 @@ class OutputHandler(Handler):
             else:
                 logger.debug("exiting output widget context manager")
                 self.output_widget_contexts.remove(comm_handler)
+
+
+class SimpleOutputHandler(OutputHandler):
+    """
+    Update a NotebookBuilder instance while handling execute_request responses. See the
+    NotebookBuilder class for moe details, but in a nutshell it updates the Pydantic-modeled
+    in-memory Notebook document when adding/clearing content or syncing display data, as well as
+    keeping Output widget state to hydrate Output widgets in display_data/execute_result content
+    to replace the Output widget mimetype with actual output content.
+    """
+
+    def __init__(self, client: KernelSidecarClient, cell_id: str, builder: NotebookBuilder):
+        super().__init__(client, cell_id)
+        self.builder = builder
+
+    async def add_cell_content(self, content: ContentType):
+        self.builder.add_cell_output(self.cell_id, content)
+
+    async def clear_cell_content(self):
+        self.builder.clear_cell_output(self.cell_id)
+
+    async def add_output_widget_content(self, content: ContentType):
+        output_widget = self.output_widget_contexts[0]
+        self.builder.output_widget_state[output_widget.comm_id] = output_widget.state["outputs"]
+
+    async def clear_output_widget_content(self):
+        output_widget = self.output_widget_contexts[0]
+        self.builder.output_widget_state[output_widget.comm_id] = output_widget.state["outputs"]
+
+    async def sync_display_data(
+        self, content: Union[messages.DisplayDataContent, messages.UpdateDisplayDataContent]
+    ):
+        self.builder.replace_display_data(content)

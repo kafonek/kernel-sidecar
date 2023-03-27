@@ -5,11 +5,10 @@ Output widgets that may need to be rerendered or updated.
 """
 import logging
 import uuid
-from typing import Dict, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import pydantic
 
-from kernel_sidecar.comms import WidgetHandler
 from kernel_sidecar.models import messages, notebook
 
 logger = logging.getLogger(__name__)
@@ -25,7 +24,7 @@ ContentType = Union[
 class NotebookBuilder:
     def __init__(self, nb: notebook.Notebook):
         self.nb = nb
-        self.display_ids: Dict[str, messages.DisplayDataContent] = {}
+        self.output_widget_state: Dict[str, List[ContentType]] = {}
 
     def get_cell(self, cell_id: str) -> Optional[notebook.NotebookCell]:
         for cell in self.nb.cells:
@@ -40,7 +39,7 @@ class NotebookBuilder:
         self.nb.cells.append(cell)
         return cell
 
-    def add_output(
+    def add_cell_output(
         self,
         cell_id: str,
         content: ContentType,
@@ -51,7 +50,7 @@ class NotebookBuilder:
             return
         cell.outputs.append(content)
 
-    def clear_output(self, cell_id: str):
+    def clear_cell_output(self, cell_id: str):
         cell = self.get_cell(cell_id)
         if not cell:
             logger.warning(f"Cell not found: {cell_id}")
@@ -61,14 +60,13 @@ class NotebookBuilder:
     def replace_display_data(
         self, content: Union[messages.DisplayDataContent, messages.UpdateDisplayDataContent]
     ):
-        self.display_ids[content.display_id] = content
         for cell in self.nb.cells:
             for idx, output in enumerate(cell.outputs):
                 if isinstance(output, messages.DisplayDataContent):
                     if output.display_id == content.display_id:
                         cell.outputs[idx] = content
 
-    def hydrate_output_widgets(self, comms: Dict[str, WidgetHandler]) -> notebook.Notebook:
+    def hydrate_output_widgets(self) -> notebook.Notebook:
         widget_mimetype = "application/vnd.jupyter.widget-view+json"
         cleaned = self.nb.copy(deep=True)
         for cell in cleaned.cells:
@@ -76,19 +74,14 @@ class NotebookBuilder:
                 if isinstance(output, (messages.DisplayDataContent, messages.ExecuteResultContent)):
                     if widget_mimetype in output.data:
                         comm_id = output.data[widget_mimetype]["model_id"]
-                        if comm_id not in comms:
+                        if comm_id not in self.output_widget_state:
                             logger.warning(
-                                f"Comm id {comm_id} listed in output but not in comm dict"
+                                f"Output widget {comm_id} listed in output but no state cached"
                             )
                         else:
-                            comm = comms[comm_id]
-                            if comm.model_name == "OutputModel":
-                                cell.outputs.pop(idx)
-                                for widget_output in comm.state["outputs"]:
-                                    model = pydantic.parse_obj_as(
-                                        notebook.CellOutput, widget_output
-                                    )
-                                    cell.outputs.insert(idx, model)
-                                    idx += 1
-
+                            output_state = self.output_widget_state[comm_id]
+                            cell.outputs.pop(idx)
+                            for content in output_state:
+                                cell.outputs.insert(idx, content)
+                                idx += 1
         return cleaned
