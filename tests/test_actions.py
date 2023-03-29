@@ -272,3 +272,11 @@ def test_register_new_request_type():
     # vanilla actions.KernelAction class attribute
     with pytest.raises(ValueError):
         actions.KernelAction(req)
+
+
+async def test_page(kernel: KernelSidecarClient):
+    handler = DebugHandler()
+    action = kernel.execute_request("f = 1\nf??", handlers=[handler])
+    await action
+    execute_reply: messages.ExecuteReply = handler.get_last_msg("execute_reply")
+    assert execute_reply.content.payload[0].source == "page"

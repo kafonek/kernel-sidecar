@@ -24,14 +24,13 @@ import pydantic
 import zmq
 from jupyter_client import AsyncKernelClient, KernelConnectionInfo
 from jupyter_client.channels import ZMQSocketChannel
+from zmq.asyncio import Context
+from zmq.utils.monitor import recv_monitor_message
+
 from kernel_sidecar import actions
 from kernel_sidecar.comms import CommHandler, CommManager, WidgetHandler
 from kernel_sidecar.handlers.base import Handler
 from kernel_sidecar.models import messages, requests
-from kernel_sidecar.models.notebook import Notebook
-from kernel_sidecar.nb_builder import NotebookBuilder
-from zmq.asyncio import Context
-from zmq.utils.monitor import recv_monitor_message
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +76,7 @@ class KernelSidecarClient:
     # custom message models defined somewhere besides kernel_sidecar.models.messages
     # should be type: Annotated[Union[models...], Field(discriminator='msg_type')]
     _handler_timeout: float = None  # optional timeout when awaiting Action handlers
+    jupyter_widget_handler: Type[CommHandler] = WidgetHandler
 
     def __init__(
         self,
@@ -84,7 +84,6 @@ class KernelSidecarClient:
         max_message_size: Optional[int] = None,
         default_handlers: List[Handler] = None,
         comm_manager: Optional[CommManager] = None,
-        builder: NotebookBuilder = None,
     ):
         """
         - connection_info: dict with zmq ports the Kernel has open
@@ -123,9 +122,9 @@ class KernelSidecarClient:
         if default_handlers and not isinstance(default_handlers, list):
             raise RuntimeError(f"{default_handlers=} must be None or a list")
         self.default_handlers = default_handlers or []
-
-        self.comm_manager = comm_manager or CommManager(handlers={"jupyter.widget": WidgetHandler})
-        self.builder = builder or NotebookBuilder(nb=Notebook())
+        self.comm_manager = comm_manager or CommManager(
+            handlers={"jupyter.widget": self.jupyter_widget_handler}
+        )
 
     @property
     def running_action(self) -> Optional[actions.KernelAction]:
@@ -380,8 +379,10 @@ class KernelSidecarClient:
                 if not raw_msg.get("parent_header"):
                     await self.handle_missing_parent_msg_id(raw_msg)
                     continue
-
-                msg = pydantic.parse_obj_as(messages.Message, raw_msg)
+                try:
+                    msg = pydantic.parse_obj_as(messages.Message, raw_msg)
+                except pydantic.ValidationError as e:
+                    await self.handle_unparseable_message(raw_msg, e)
                 if msg.parent_header.msg_id not in self.actions:
                     await self.handle_untracked_action(msg)
                     continue
@@ -400,8 +401,6 @@ class KernelSidecarClient:
                     ra.running = False
                 await asyncio.wait_for(action.handle_message(msg), timeout=self._handler_timeout)
 
-            except pydantic.ValidationError as e:
-                await self.handle_unparseable_message(raw_msg, e)
             except asyncio.CancelledError:
                 logger.debug("Message processing Task cancelled")
                 break
