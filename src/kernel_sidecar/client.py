@@ -379,8 +379,10 @@ class KernelSidecarClient:
                 if not raw_msg.get("parent_header"):
                     await self.handle_missing_parent_msg_id(raw_msg)
                     continue
-
-                msg = pydantic.parse_obj_as(messages.Message, raw_msg)
+                try:
+                    msg = pydantic.parse_obj_as(messages.Message, raw_msg)
+                except pydantic.ValidationError as e:
+                    await self.handle_unparseable_message(raw_msg, e)
                 if msg.parent_header.msg_id not in self.actions:
                     await self.handle_untracked_action(msg)
                     continue
@@ -399,8 +401,6 @@ class KernelSidecarClient:
                     ra.running = False
                 await asyncio.wait_for(action.handle_message(msg), timeout=self._handler_timeout)
 
-            except pydantic.ValidationError as e:
-                await self.handle_unparseable_message(raw_msg, e)
             except asyncio.CancelledError:
                 logger.debug("Message processing Task cancelled")
                 break
