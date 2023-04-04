@@ -126,6 +126,17 @@ class KernelSidecarClient:
             handlers={"jupyter.widget": self.jupyter_widget_handler}
         )
 
+        # self.kc.<channel>.is_alive() returns True even after a disconnect.
+        # Keeping our own "connected" state for each channel so Applications using this Client can
+        # customize behavior on ZMQ disconnect / reconnect. This gets set once when entering the
+        # class async context manager, and then further updated by zmq_lifecycle_hooks.
+        self.zmq_channels_connected = {
+            "shell": False,
+            "iopub": False,
+            "stdin": False,
+            "control": False,
+        }
+
     @property
     def running_action(self) -> Optional[actions.KernelAction]:
         """
@@ -329,16 +340,6 @@ class KernelSidecarClient:
         # Provide a hook for subclasses to take action on channel disconnects
         await self.handle_zmq_disconnect(channel_name)
 
-    async def zmq_channel_lifecycle_event(self, channel_name: str, event: zmq.Event):
-        """
-        Hook for subclasses to override if they need to take action on ZMQ channel lifecycle events
-        like shell channel or iopub channel reconnecting after disconnect.
-
-        event.HANDSHAKE_SUCCEEDED is connected
-        event.DISCONNECTED is disconnected
-        """
-        pass
-
     async def _watch_channel_for_status(self, channel_name: str, monitor_socket: zmq.Socket):
         """
         Watches for zmq channel disconnects and returns so that the higher level
@@ -355,8 +356,12 @@ class KernelSidecarClient:
             try:
                 msg: dict = await recv_monitor_message(monitor_socket)
                 event: zmq.Event = msg["event"]
-                await self.zmq_channel_lifecycle_event(channel_name, event)
+                # Set the channel connected status to True or False based on specific events,
+                # also return out of this coroutine on disconnect to trigger the reconnect process
+                if event == zmq.EVENT_HANDSHAKE_SUCCEEDED:
+                    self.zmq_channels_connected[channel_name] = True
                 if event == zmq.EVENT_DISCONNECTED:
+                    self.zmq_channels_connected[channel_name] = False
                     return
             except asyncio.CancelledError:
                 break
@@ -457,6 +462,9 @@ class KernelSidecarClient:
     async def handle_zmq_disconnect(self, channel_name: str):
         pass
 
+    async def setup(self):
+        pass
+
     async def __aenter__(self) -> "KernelSidecarClient":
         # General asyncio comment: make sure tasks always have a reference (assigned to variable or
         # being awaited) or they might be garbage collected while running.
@@ -467,6 +475,7 @@ class KernelSidecarClient:
             task = asyncio.create_task(self.watch_channel(channel))
             self.channel_watcher_parent_tasks.append(task)
         self.mq_task = asyncio.create_task(self.process_message())
+        await self.setup()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
