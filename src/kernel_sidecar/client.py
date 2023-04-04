@@ -292,7 +292,10 @@ class KernelSidecarClient:
 
         message_task = asyncio.create_task(self._watch_channel_for_messages(channel, channel_name))
         status_task = asyncio.create_task(
-            self._watch_channel_for_status(channel.socket.get_monitor_socket())
+            self._watch_channel_for_status(
+                channel_name,
+                channel.socket.get_monitor_socket(),
+            )
         )
         self.channel_watching_tasks.append(message_task)
         self.channel_watching_tasks.append(status_task)
@@ -301,7 +304,9 @@ class KernelSidecarClient:
             [message_task, status_task],
             return_when=asyncio.FIRST_COMPLETED,
         )
-        logger.debug("Cycling channel based on task ending", extra={"channel": channel_name})
+        logger.debug(
+            f"Cycling {channel_name} based on task ending", extra={"channel": channel_name}
+        )
 
         # Reconnect ASAP
         # The .<channel_name>_channel properties check if ._<channel_name>_channel attribute
@@ -324,7 +329,17 @@ class KernelSidecarClient:
         # Provide a hook for subclasses to take action on channel disconnects
         await self.handle_zmq_disconnect(channel_name)
 
-    async def _watch_channel_for_status(self, monitor_socket: zmq.Socket):
+    async def zmq_channel_lifecycle_event(self, channel_name: str, event: zmq.Event):
+        """
+        Hook for subclasses to override if they need to take action on ZMQ channel lifecycle events
+        like shell channel or iopub channel reconnecting after disconnect.
+
+        event.HANDSHAKE_SUCCEEDED is connected
+        event.DISCONNECTED is disconnected
+        """
+        pass
+
+    async def _watch_channel_for_status(self, channel_name: str, monitor_socket: zmq.Socket):
         """
         Watches for zmq channel disconnects and returns so that the higher level
         watch_channel coroutine will "cycle" this connection.
@@ -340,6 +355,7 @@ class KernelSidecarClient:
             try:
                 msg: dict = await recv_monitor_message(monitor_socket)
                 event: zmq.Event = msg["event"]
+                await self.zmq_channel_lifecycle_event(channel_name, event)
                 if event == zmq.EVENT_DISCONNECTED:
                     return
             except asyncio.CancelledError:
