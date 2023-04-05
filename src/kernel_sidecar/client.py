@@ -126,6 +126,17 @@ class KernelSidecarClient:
             handlers={"jupyter.widget": self.jupyter_widget_handler}
         )
 
+        # self.kc.<channel>.is_alive() returns True even after a disconnect.
+        # Keeping our own "connected" state for each channel so Applications using this Client can
+        # customize behavior on ZMQ disconnect / reconnect. This gets set once when entering the
+        # class async context manager, and then further updated by zmq_lifecycle_hooks.
+        self.zmq_channels_connected = {
+            "shell": False,
+            "iopub": False,
+            "stdin": False,
+            "control": False,
+        }
+
     @property
     def running_action(self) -> Optional[actions.KernelAction]:
         """
@@ -292,7 +303,10 @@ class KernelSidecarClient:
 
         message_task = asyncio.create_task(self._watch_channel_for_messages(channel, channel_name))
         status_task = asyncio.create_task(
-            self._watch_channel_for_status(channel.socket.get_monitor_socket())
+            self._watch_channel_for_status(
+                channel_name,
+                channel.socket.get_monitor_socket(),
+            )
         )
         self.channel_watching_tasks.append(message_task)
         self.channel_watching_tasks.append(status_task)
@@ -301,7 +315,9 @@ class KernelSidecarClient:
             [message_task, status_task],
             return_when=asyncio.FIRST_COMPLETED,
         )
-        logger.debug("Cycling channel based on task ending", extra={"channel": channel_name})
+        logger.debug(
+            f"Cycling {channel_name} based on task ending", extra={"channel": channel_name}
+        )
 
         # Reconnect ASAP
         # The .<channel_name>_channel properties check if ._<channel_name>_channel attribute
@@ -324,7 +340,7 @@ class KernelSidecarClient:
         # Provide a hook for subclasses to take action on channel disconnects
         await self.handle_zmq_disconnect(channel_name)
 
-    async def _watch_channel_for_status(self, monitor_socket: zmq.Socket):
+    async def _watch_channel_for_status(self, channel_name: str, monitor_socket: zmq.Socket):
         """
         Watches for zmq channel disconnects and returns so that the higher level
         watch_channel coroutine will "cycle" this connection.
@@ -340,7 +356,12 @@ class KernelSidecarClient:
             try:
                 msg: dict = await recv_monitor_message(monitor_socket)
                 event: zmq.Event = msg["event"]
+                # Set the channel connected status to True or False based on specific events,
+                # also return out of this coroutine on disconnect to trigger the reconnect process
+                if event == zmq.EVENT_HANDSHAKE_SUCCEEDED:
+                    self.zmq_channels_connected[channel_name] = True
                 if event == zmq.EVENT_DISCONNECTED:
+                    self.zmq_channels_connected[channel_name] = False
                     return
             except asyncio.CancelledError:
                 break
@@ -441,6 +462,16 @@ class KernelSidecarClient:
     async def handle_zmq_disconnect(self, channel_name: str):
         pass
 
+    async def setup(self):
+        """
+        Hook for subclasses/applications to use as an entrypoint after entering the async context
+        manager. May be useful for things like -
+         1. Execute requests that import libraries
+         2. Establishing comms to custom comm targets
+         3. Setting state in the Kernel from information in the document model
+        """
+        pass
+
     async def __aenter__(self) -> "KernelSidecarClient":
         # General asyncio comment: make sure tasks always have a reference (assigned to variable or
         # being awaited) or they might be garbage collected while running.
@@ -450,7 +481,9 @@ class KernelSidecarClient:
         for channel in ["iopub", "shell", "control", "stdin"]:
             task = asyncio.create_task(self.watch_channel(channel))
             self.channel_watcher_parent_tasks.append(task)
+            self.zmq_channels_connected[channel] = True
         self.mq_task = asyncio.create_task(self.process_message())
+        await self.setup()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):

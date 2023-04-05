@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.5.1] - 2023-04-05
+### Added
+- `async def setup(self)` hook in the `KernelSidecarClient`, called while entering the async context manager. Useful for subclasses/applications to do initial work after ZMQ channels are being watched
+- `client.zmq_channels_connected` dictionary with "better state" for whether the ZMQ channels (`iopub`, `shell`, `stdin`, `control`) are actually connected or not based on looking at the ZMQ monitoring socket. Useful for subclasses/applications handling ZMQ reconnection if the Kernel process dies and restarts (such as OOM'ing)
+
 ## [0.5.0] - 2023-03-29
 ### Changed
 - Some syntax changes in `OutputHandler` based on experience integrating `kernel-sidecar` into Noteable's production app
