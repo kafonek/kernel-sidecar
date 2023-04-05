@@ -463,6 +463,13 @@ class KernelSidecarClient:
         pass
 
     async def setup(self):
+        """
+        Hook for subclasses/applications to use as an entrypoint after entering the async context
+        manager. May be useful for things like -
+         1. Execute requests that import libraries
+         2. Establishing comms to custom comm targets
+         3. Setting state in the Kernel from information in the document model
+        """
         pass
 
     async def __aenter__(self) -> "KernelSidecarClient":
@@ -474,6 +481,7 @@ class KernelSidecarClient:
         for channel in ["iopub", "shell", "control", "stdin"]:
             task = asyncio.create_task(self.watch_channel(channel))
             self.channel_watcher_parent_tasks.append(task)
+            self.zmq_channels_connected[channel] = True
         self.mq_task = asyncio.create_task(self.process_message())
         await self.setup()
         return self
