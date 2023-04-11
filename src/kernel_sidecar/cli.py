@@ -58,7 +58,9 @@ def main(
     execute: Optional[str] = typer.Option(
         default=None, help="Execute code string instead of sending kernel info request"
     ),
-    tail: Optional[bool] = False,
+    tail: Optional[bool] = typer.Option(
+        default=False, help="Continue tailing ZMQ after connecting or executing code"
+    ),
 ):
     if debug:
         setup_logging(log_level=logging.DEBUG)
