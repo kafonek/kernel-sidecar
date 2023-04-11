@@ -73,6 +73,8 @@ Options:
   --debug / --no-debug            Turn on DEBUG logging  [default: no-debug]
   --execute TEXT                  Execute code string instead of sending
                                   kernel info request
+  --tail / --no-tail              Continue tailing ZMQ after connecting or
+                                  executing code  [default: no-tail]
   --install-completion [bash|zsh|fish|powershell|pwsh]
                                   Install completion for the specified shell.
   --show-completion [bash|zsh|fish|powershell|pwsh]

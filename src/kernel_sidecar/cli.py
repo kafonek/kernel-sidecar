@@ -38,12 +38,15 @@ async def execute_code(connection_info: KernelConnectionInfo, code: str):
         await kernel.execute_request(code=code, handlers=[OutputHandler()])
 
 
-async def connect(connection_info: KernelConnectionInfo):
+async def connect(connection_info: KernelConnectionInfo, tail: bool):
     async with KernelSidecarClient(connection_info) as kernel:
         handler = DebugHandler()
         await kernel.kernel_info_request(handlers=[handler])
         kernel_info: messages.KernelInfoReply = handler.get_last_msg("kernel_info_reply")
         logger.info(pprint.pformat(kernel_info.content.dict()))
+        if tail:
+            while True:
+                await asyncio.sleep(0.01)
 
 
 @app.command()
@@ -55,6 +58,9 @@ def main(
     execute: Optional[str] = typer.Option(
         default=None, help="Execute code string instead of sending kernel info request"
     ),
+    tail: Optional[bool] = typer.Option(
+        default=False, help="Continue tailing ZMQ after connecting or executing code"
+    ),
 ):
     if debug:
         setup_logging(log_level=logging.DEBUG)
@@ -65,7 +71,7 @@ def main(
     if execute:
         asyncio.run(execute_code(connection_info, execute))
     else:
-        asyncio.run(connect(connection_info))
+        asyncio.run(connect(connection_info, tail=tail))
 
 
 if __name__ == "__main__":
