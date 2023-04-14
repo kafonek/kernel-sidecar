@@ -13,6 +13,7 @@ from kernel_sidecar.handlers.base import Handler
 from kernel_sidecar.handlers.debug import DebugHandler
 from kernel_sidecar.log_utils import setup_logging
 from kernel_sidecar.models import messages
+from kernel_sidecar.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,7 @@ def main(
     ),
 ):
     if debug:
+        get_settings().pprint_logs = True
         setup_logging(log_level=logging.DEBUG)
     else:
         setup_logging()

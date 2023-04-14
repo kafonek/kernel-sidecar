@@ -31,6 +31,7 @@ from kernel_sidecar import actions
 from kernel_sidecar.comms import CommHandler, CommManager, WidgetHandler
 from kernel_sidecar.handlers.base import Handler
 from kernel_sidecar.models import messages, requests
+from kernel_sidecar.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ class KernelSidecarClient:
     # ^^ discriminator model to parse messages coming in from ZMQ. Override this if you have
     # custom message models defined somewhere besides kernel_sidecar.models.messages
     # should be type: Annotated[Union[models...], Field(discriminator='msg_type')]
-    _handler_timeout: float = None  # optional timeout when awaiting Action handlers
+    _handler_timeout: Optional[float] = None  # optional timeout when awaiting Action handlers
     jupyter_widget_handler: Type[CommHandler] = WidgetHandler
 
     def __init__(
@@ -171,12 +172,18 @@ class KernelSidecarClient:
             # Update the .actions dictionary so that we route any observed messages coming to us
             # over ZMQ into this action for handling callbacks
             self.actions[action.msg_id] = action
-            logger.debug(
-                f"Sent {action.request.header.msg_type} to kernel",
-                extra={"body": pprint.pformat(action.request.dict())},
-            )
+
+            log_msg = f"Sent {action.request.header.msg_type} to kernel"
+            log_extra = {}
+            if get_settings().pprint_logs:
+                log_extra["body"] = pprint.pformat(action.request.dict())
+            logger.debug(log_msg, extra=log_extra)
         except Exception as e:
-            logger.exception("Error sending message", extra={"body": action.request.dict()})
+            log_msg = f"Error sending {action.request.header.msg_type} message over ZMQ"
+            log_extra = {}
+            if get_settings().pprint_logs:
+                log_extra["body"] = pprint.pformat(action.request.dict())
+            logger.error(log_msg, extra=log_extra, exc_info=True)
             raise e
         return action
 
@@ -374,12 +381,17 @@ class KernelSidecarClient:
                     await asyncio.sleep(0.001)
                     continue
                 raw_msg: dict = await channel.get_msg()
-                msg_type = raw_msg.get("msg_type", "")
-                logger.debug(
-                    f"Message {msg_type} on {channel_name}",
-                    extra={"body": pprint.pformat(raw_msg), "channel": channel_name},
-                )
                 self.mq.put_nowait(raw_msg)
+                msg_type = raw_msg.get("msg_type", "")
+
+                # When using kernel-sidecar in a production app, we noticed that pprint.pformat
+                # caused OOMs due to pprint.pformat trying to format large messages (e.g.
+                # display_data for large Dataframes formatted with dx.py).
+                log_msg = f"Message {msg_type} on {channel_name}"
+                log_extra = {"channel": channel_name}
+                if get_settings().pprint_logs:
+                    log_extra["body"] = pprint.pformat(raw_msg)
+                logger.debug(log_msg, extra=log_extra)
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -395,39 +407,54 @@ class KernelSidecarClient:
         Action handlers are awaited before the next message is processed.
         """
         while True:
+            # Pull dictionaries off the internal message queue
+            raw_msg: dict = await self.mq.get()
+
+            # kernel status "starting" is one example of messages with no parent header
+            if not raw_msg.get("parent_header"):
+                await self.handle_missing_parent_msg_id(raw_msg)
+                continue
+
+            # Getting a ValidationError here probably means we need to add new Message models
             try:
-                raw_msg: dict = await self.mq.get()
-                if not raw_msg.get("parent_header"):
-                    await self.handle_missing_parent_msg_id(raw_msg)
-                    continue
-                try:
-                    msg = pydantic.parse_obj_as(messages.Message, raw_msg)
-                except pydantic.ValidationError as e:
-                    await self.handle_unparseable_message(raw_msg, e)
-                if msg.parent_header.msg_id not in self.actions:
-                    await self.handle_untracked_action(msg)
-                    continue
+                msg = pydantic.parse_obj_as(messages.Message, raw_msg)
+            except pydantic.ValidationError as e:
+                await self.handle_unparseable_message(raw_msg, e)
 
-                action = self.actions[msg.parent_header.msg_id]
-                ra = self.running_action
-                if ra and ra is not action:
-                    logger.warning(
-                        f"Observed message for {action} while {ra} has not completed. This is a "
-                        "sign that expected messages didn't come over ZMQ or the Action needs a "
-                        "different expected_reply_msg_type. Setting running_action.done to True to "
-                        "avoid app hanging."
-                    )
+            # Getting an "untracked action" probably means another client is talking to the Kernel
+            # over ZMQ and sending in requests
+            if msg.parent_header.msg_id not in self.actions:
+                await self.handle_untracked_action(msg)
+                continue
 
-                    ra.done.set()
-                    ra.running = False
+            # Happy path: we have an Action for the parent request of messages we see coming in
+            action = self.actions[msg.parent_header.msg_id]
+
+            # Log warning if we think we're seeing responses for a new Action and haven't completed
+            # the previously running action, e.g. we start getting status / content responses for
+            # a new execute_request when we haven't seen execute_reply / status idle for a previous
+            # execute request
+            if self.running_action and self.running_action is not action:
+                logger.warning(
+                    f"Observed message for {action} while {self.running_action} has not "
+                    "completed. This is a sign that expected messages didn't come over ZMQ or "
+                    "the Action needs a different expected_reply_msg_type. Setting "
+                    "running_action.done to True to avoid app hanging."
+                )
+
+                self.running_action.done.set()
+                self.running_action.running = False
+
+            # Optional timeout for callbacks
+            try:
                 await asyncio.wait_for(action.handle_message(msg), timeout=self._handler_timeout)
-
             except asyncio.CancelledError:
-                logger.debug("Message processing Task cancelled")
-                break
-            except Exception as e:
+                logger.warning(f"Timeout handling callbacks for {action}")
+                continue
+            except:  # noqa: E722
+                # Important decision to not raise the exception here so that one failed callback
+                # does not stop the entire process inbound message coroutine loop
                 logger.exception("Error while handling message")
-                raise e
 
     async def handle_missing_parent_msg_id(self, raw_msg: dict):
         """
