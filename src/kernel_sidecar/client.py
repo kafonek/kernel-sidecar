@@ -31,6 +31,7 @@ from kernel_sidecar import actions
 from kernel_sidecar.comms import CommHandler, CommManager, WidgetHandler
 from kernel_sidecar.handlers.base import Handler
 from kernel_sidecar.models import messages, requests
+from kernel_sidecar.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -172,17 +173,17 @@ class KernelSidecarClient:
             # over ZMQ into this action for handling callbacks
             self.actions[action.msg_id] = action
 
-            # pprint.pformat usage note: the body we're sending to ZMQ is not likely to be large
-            # so not checking settings for formatting config here
-            logger.debug(
-                f"Sent {action.request.header.msg_type} to kernel",
-                extra={"body": pprint.pformat(action.request.dict())},
-            )
+            log_msg = f"Sent {action.request.header.msg_type} to kernel"
+            log_extra = {}
+            if get_settings().pprint_logs:
+                log_extra["body"] = pprint.pformat(action.request.dict())
+            logger.debug(log_msg, extra=log_extra)
         except Exception as e:
-            logger.exception(
-                f"Error sending {action.request.header.msg_type} message over ZMQ",
-                extra={"body": pprint.pformat(action.request.dict())},
-            )
+            log_msg = f"Error sending {action.request.header.msg_type} message over ZMQ"
+            log_extra = {}
+            if get_settings().pprint_logs:
+                log_extra["body"] = pprint.pformat(action.request.dict())
+            logger.error(log_msg, extra=log_extra, exc_info=True)
             raise e
         return action
 
@@ -383,11 +384,14 @@ class KernelSidecarClient:
                 self.mq.put_nowait(raw_msg)
                 msg_type = raw_msg.get("msg_type", "")
 
-                #
-                logger.debug(
-                    f"Message {msg_type} on {channel_name}",
-                    extra={"body": pprint.pformat(raw_msg), "channel": channel_name},
-                )
+                # When using kernel-sidecar in a production app, we noticed that pprint.pformat
+                # caused OOMs due to pprint.pformat trying to format large messages (e.g.
+                # display_data for large Dataframes formatted with dx.py).
+                log_msg = f"Message {msg_type} on {channel_name}"
+                log_extra = {"channel": channel_name}
+                if get_settings().pprint_logs:
+                    log_extra["body"] = pprint.pformat(raw_msg)
+                logger.debug(log_msg, extra=log_extra)
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -446,8 +450,10 @@ class KernelSidecarClient:
                 await asyncio.wait_for(action.handle_message(msg), timeout=self._handler_timeout)
             except asyncio.CancelledError:
                 logger.warning(f"Timeout handling callbacks for {action}")
-                break
+                continue
             except:  # noqa: E722
+                # Important decision to not raise the exception here so that one failed callback
+                # does not stop the entire process inbound message coroutine loop
                 logger.exception("Error while handling message")
 
     async def handle_missing_parent_msg_id(self, raw_msg: dict):
