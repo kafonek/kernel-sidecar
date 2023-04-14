@@ -7,6 +7,7 @@ import pytest
 from jupyter_client import AsyncKernelClient, manager
 from kernel_sidecar.client import KernelSidecarClient
 from kernel_sidecar.log_utils import setup_logging
+from kernel_sidecar.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ def configure_logging():
     See log_utils.py for more comments and example of how you would set up structlog in your own app
     to process both structlog-emitted logs and vanilla logs (which kernel-sidecar emits)
     """
+    get_settings().pprint_logs = True
     setup_logging()
 
 
