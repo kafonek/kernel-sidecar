@@ -5,8 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+
+## [0.5.2] - 2023-04-14
 ### Added
 - `--tail` flag on CLI
+- Settings file to configure pprint.pformat in log extras. Turned off by default because we saw memory performance issues pprint'ing large output messages
 
 ## [0.5.1] - 2023-04-05
 ### Added
