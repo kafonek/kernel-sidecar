@@ -376,7 +376,7 @@ class KernelSidecarClient:
                 msg_type = raw_msg.get("msg_type", "")
                 logger.debug(
                     f"Message {msg_type} on {channel_name}",
-                    extra=raw_msg,
+                    extra={"body": pprint.pformat(raw_msg), "channel": channel_name},
                 )
                 self.mq.put_nowait(raw_msg)
             except asyncio.CancelledError:
