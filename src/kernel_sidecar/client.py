@@ -171,7 +171,7 @@ class KernelSidecarClient:
             self.actions[action.msg_id] = action
             logger.debug(
                 f"Sent {action.request.header.msg_type} to kernel",
-                extra=action.request.dict(),
+                extra={"body": action.request.dict()},
             )
         except Exception as e:
             logger.exception("Error sending message", extra={"body": action.request.dict()})

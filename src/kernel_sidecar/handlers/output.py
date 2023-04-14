@@ -106,10 +106,9 @@ class OutputHandler(Handler):
         if self.clear_on_next_output:
             await self.clear_content()
             self.clear_on_next_output = False
+        await self.add_content(msg.content)
         if msg.content.display_id:
             await self.sync_display_data(msg.content)
-        else:
-            await self.add_content(msg.content)
 
     async def handle_update_display_data(self, msg: messages.UpdateDisplayData):
         await self.sync_display_data(msg.content)
