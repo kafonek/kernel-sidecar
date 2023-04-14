@@ -376,7 +376,7 @@ class KernelSidecarClient:
                 msg_type = raw_msg.get("msg_type", "")
                 logger.debug(
                     f"Message {msg_type} on {channel_name}",
-                    extra={"body": pprint.pformat(raw_msg), "channel": channel_name},
+                    extra=raw_msg,
                 )
                 self.mq.put_nowait(raw_msg)
             except asyncio.CancelledError:
@@ -454,9 +454,7 @@ class KernelSidecarClient:
         # Make a noisy warning here because it will potentially break awaiting actions, such as
         # if kernel_info_reply ends up unparseable because LanguageInfo payload is slightly off or
         # something, then await sidecar.kernel_info_request() will never resolve
-        logger.warning(
-            "Unparseable message", extra={"body": raw_msg, "error": error}
-        )
+        logger.warning("Unparseable message", extra={"body": raw_msg, "error": error})
 
     async def handle_zmq_disconnect(self, channel_name: str):
         pass
