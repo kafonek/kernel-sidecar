@@ -17,7 +17,6 @@ assert handler.counts == {"status": 2, "kernel_info_reply": 1}
 
 import asyncio
 import logging
-import pprint
 from typing import Awaitable, Callable, List, Optional, Type
 
 import pydantic
