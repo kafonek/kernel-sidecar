@@ -61,7 +61,6 @@ class OutputHandler(Handler):
         pass
 
     async def add_content(self, content: ContentType):
-        logger.critical("add_content")
         if self.output_widget_contexts:  # inside a "with out:" Output widget context
             handler: WidgetHandler = self.output_widget_contexts[0]
             handler.state["outputs"].append(content)
@@ -71,7 +70,6 @@ class OutputHandler(Handler):
             await self.add_cell_content(content)
 
     async def clear_content(self):
-        logger.critical("clear_content")
         if self.output_widget_contexts:
             handler: WidgetHandler = self.output_widget_contexts[0]
             handler.state["outputs"] = []
@@ -81,35 +79,30 @@ class OutputHandler(Handler):
             await self.clear_cell_content()
 
     async def sync_output_widget_state(self, handler: WidgetHandler):
-        logger.critical("sync_output_widget_state")
         self.client.comm_msg_request(
             comm_id=handler.comm_id,
             data={"method": "update", "state": {"outputs": handler.state["outputs"]}},
         )
 
     async def handle_stream(self, msg: messages.Stream):
-        logger.critical("handle_stream")
         if self.clear_on_next_output:
             await self.clear_content()
             self.clear_on_next_output = False
         await self.add_content(msg.content)
 
     async def handle_execute_result(self, msg: messages.ExecuteResult):
-        logger.critical("handle_execute_result")
         if self.clear_on_next_output:
             await self.clear_content()
             self.clear_on_next_output = False
         await self.add_content(msg.content)
 
     async def handle_error(self, msg: messages.Error):
-        logger.critical("handle_error")
         if self.clear_on_next_output:
             await self.clear_content()
             self.clear_on_next_output = False
         await self.add_content(msg.content)
 
     async def handle_display_data(self, msg: messages.DisplayData):
-        logger.critical("handle_display_data")
         if self.clear_on_next_output:
             await self.clear_content()
             self.clear_on_next_output = False
@@ -119,18 +112,15 @@ class OutputHandler(Handler):
             await self.add_content(msg.content)
 
     async def handle_update_display_data(self, msg: messages.UpdateDisplayData):
-        logger.critical("handle_update_display_data")
         await self.sync_display_data(msg.content)
 
     async def handle_clear_output(self, msg: messages.ClearOutput):
-        logger.critical("handle_clear_output")
         if msg.content.wait:
             self.clear_on_next_output = True
         else:
             await self.clear_content()
 
     async def handle_comm_msg(self, msg: messages.CommMsg):
-        logger.critical("handle_comm_msg")
         # Exit early if:
         #  - we don't recognize this comm id
         #  - It's not a comm for an Output Widget
