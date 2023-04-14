@@ -24,13 +24,12 @@ import pydantic
 import zmq
 from jupyter_client import AsyncKernelClient, KernelConnectionInfo
 from jupyter_client.channels import ZMQSocketChannel
-from zmq.asyncio import Context
-from zmq.utils.monitor import recv_monitor_message
-
 from kernel_sidecar import actions
 from kernel_sidecar.comms import CommHandler, CommManager, WidgetHandler
 from kernel_sidecar.handlers.base import Handler
 from kernel_sidecar.models import messages, requests
+from zmq.asyncio import Context
+from zmq.utils.monitor import recv_monitor_message
 
 logger = logging.getLogger(__name__)
 
@@ -173,7 +172,7 @@ class KernelSidecarClient:
             self.actions[action.msg_id] = action
             logger.debug(
                 f"Sent {action.request.header.msg_type} to kernel",
-                extra={"body": pprint.pformat(action.request.dict())},
+                extra=action.request.dict(),
             )
         except Exception as e:
             logger.exception("Error sending message", extra={"body": action.request.dict()})
@@ -456,7 +455,7 @@ class KernelSidecarClient:
         # if kernel_info_reply ends up unparseable because LanguageInfo payload is slightly off or
         # something, then await sidecar.kernel_info_request() will never resolve
         logger.warning(
-            "Unparseable message", extra={"body": pprint.pformat(raw_msg), "error": error}
+            "Unparseable message", extra={"body": raw_msg, "error": error}
         )
 
     async def handle_zmq_disconnect(self, channel_name: str):
