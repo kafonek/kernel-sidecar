@@ -25,6 +25,10 @@ async def test_stream(kernel: KernelSidecarClient, builder: NotebookBuilder):
         "name": "stdout",
         "text": "foo\nbar\n",
     }
+    # Todo: get this to assert .execution_count is 1 but running %%reset on the Kernel in between
+    # tests doesn't seem to be resetting the execution count reported by execute_input and
+    # execute_result messages right now, so just assert this is not None.
+    assert builder.nb.cells[0].execution_count is not None
 
 
 async def test_display_data(kernel: KernelSidecarClient, builder: NotebookBuilder):
