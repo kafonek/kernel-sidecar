@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.5.3] - 2023-04-17
+### Added
+- When a `KernelAction` completes, it will call `.action_complete()` for each Handler. Operational use-case for this is sending out cell complete messages with the output content when `execute_reply` might come in before a final `execute_result`
+
 ## [0.5.2] - 2023-04-14
 ### Added
 - `--tail` flag on CLI
