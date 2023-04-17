@@ -10,15 +10,15 @@ Kernel Sidecar
 <img alt="Python versions" src="https://img.shields.io/pypi/pyversions/kernel-sidecar">
 </p>
 
-# Kernel-Sidecar
+# Overview
 
-This package offers the building blocks for creating a "Kernel Sidecar" Jupyter framework. In normal Jupyter Notebook architecture, one or many frontends manage the document model (code cells, outputs, metadata, etc) and send requests to a single Kernel. Each frontend observes responses on different ZMQ channels (`iopub`, `shell`, etc) but may end up with some inconsistency based on the Kernel only sending certain responses to the client that made the request.
+`kernel-sidecar` provides the building blocks for creating applications that run alongside Jupyter Kernels, keeping the Notebook document model in memory and acting as a middle-man between the Kernel and all other clients. There are many potential features that can be built into a Sidecar application:
 
-In a `kernel-sidecar` architecture, all frontend clients talk to the `kernel-sidecar` client, and only the `kernel-sidecar` client communicates with the Kernel over ZMQ. That pattern offers several potential features:
- - Keep a document model within `kernel-sidecar` or the backend architecture
- - Add "extension"-esque capabilities on the backend such as auto-linting code on execute
- - Eliminate inconsistencies in what messages individual frontends receive because of Kernel replies
- - Model all requests, replies, and the Notebook document with Pydantic
+ - __Persisting Outputs__ for cell execution even when no clients are connected (e.g. run a cell, close your browser, come back later and see the output)
+ - __Code Cell Linting__ such as `black` or `isort`
+ - __Variable Explorer__ that can be sent to newly connected clients without needing to execute code in the Kernel
+ - __Custom Execution Managers__ to handle DAG/dependent cell execution or to dequeue queued cells without sending an interrupt to the Kernel which dequeues all queued cells
+
 
 ## Installation
 
@@ -26,7 +26,11 @@ In a `kernel-sidecar` architecture, all frontend clients talk to the `kernel-sid
 pip install kernel-sidecar
 ```
 
+
 # Key Concepts
+
+![Architecture overview diagram](docs/overview_arch_diagram.svg)
+
 ## KernelSidecarClient
 
 A manager that uses `jupyter_client` under the hood to create ZMQ connections and watch for messages coming in over different ZMQ channels (`iopub`, `shell`, etc. An important assumption here is that `kernel-sidecar` is the only client talking to the Kernel, which means every message observed coming from the Kernel should be a reply (based on `parent_header_msg.msg_id`) to a request sent from this client.

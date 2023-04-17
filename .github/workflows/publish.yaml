@@ -12,11 +12,11 @@ jobs:
 
       - name: Install Poetry
         shell: bash
-        run: curl -sSL https://install.python-poetry.org | POETRY_VERSION=1.2.2 python3 -
+        run: curl -sSL https://install.python-poetry.org | POETRY_VERSION=1.4.2 python3 -
 
       # Build "pure python" wheels from the minimum supported version (although building with 
       # higher versions should also work just fine) -- no need to build wheels with different
-      # versions since this doesn't have C-extensions / Rust compilation or other craziness
+      # versions since this doesn't have C-extensions / Rust compilation or other edge cases
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
