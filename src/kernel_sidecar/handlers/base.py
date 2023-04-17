@@ -28,3 +28,9 @@ class Handler:
         Called when a message is delegated to this Action but no handler is defined for the msg_type
         """
         pass
+
+    async def action_complete(self):
+        """
+        Called when the KernelAction this Handler is attached to is complete
+        """
+        pass

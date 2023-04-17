@@ -75,7 +75,7 @@ class KernelAction:
         """Support 'await action' syntax"""
         return self.done.wait().__await__()
 
-    def maybe_set_done(self):
+    async def maybe_set_done(self):
         """
         Set the Action as "done", meaning we've seen all expected replies from the Kernel
          - always wait until Kernel has reported being Idle with our parent header msg id
@@ -86,6 +86,8 @@ class KernelAction:
             if self.reply_seen.is_set() or not self.expected_reply_msg_type:
                 self.done.set()
                 self.running = False
+                for handler in self.handlers:
+                    await handler.action_complete()
 
     async def handle_message(self, msg: messages.Message):
         """Delegate message to the appropriate handler defined in subclasses"""
@@ -99,7 +101,7 @@ class KernelAction:
                 self.running = True
             elif msg.content.execution_state == "idle":
                 self.kernel_idle.set()
-                self.maybe_set_done()
+                await self.maybe_set_done()
         elif msg.msg_type == self.expected_reply_msg_type:
             self.reply_seen.set()
-            self.maybe_set_done()
+            await self.maybe_set_done()

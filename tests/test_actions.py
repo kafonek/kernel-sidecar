@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 from kernel_sidecar import actions
 from kernel_sidecar.client import KernelSidecarClient
+from kernel_sidecar.handlers.base import Handler
 from kernel_sidecar.handlers.debug import DebugHandler
 from kernel_sidecar.models import messages, requests
 
@@ -280,3 +281,25 @@ async def test_page(kernel: KernelSidecarClient):
     await action
     execute_reply: messages.ExecuteReply = handler.get_last_msg("execute_reply")
     assert execute_reply.content.payload[0].source == "page"
+
+
+async def test_action_complete(kernel: KernelSidecarClient):
+    """
+    When an Action "completes", the Kernel status has gone back to idle and we've seen the expected
+    reply message or error if one was applicable for the request, it will call each Handler's
+    .action_complete() method.
+    """
+
+    class OnActionComplete(Handler):
+        def __init__(self):
+            self.complete = False
+
+        async def action_complete(self):
+            self.complete = True
+
+    handler = OnActionComplete()
+    assert not handler.complete
+
+    action = kernel.execute_request("1 + 1", handlers=[handler])
+    await action
+    assert handler.complete

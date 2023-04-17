@@ -35,16 +35,22 @@ class NotebookBuilder:
         self.nb.cells.append(cell)
         return cell
 
-    def add_cell_output(
-        self,
-        cell_id: str,
-        content: ContentType,
-    ):
+    def add_cell_output(self, cell_id: str, content: ContentType):
         cell = self.get_cell(cell_id)
         if not cell:
             logger.warning(f"Cell not found: {cell_id}")
             return
         cell.outputs.append(content)
+
+    def set_execution_count(self, cell_id: str, execution_count: int):
+        cell = self.get_cell(cell_id)
+        if not cell:
+            logger.warning(f"Cell not found: {cell_id}")
+            return
+        if cell.cell_type != "code":
+            logger.warning(f"Cell is not a code cell: {cell_id}")
+            return
+        cell.execution_count = execution_count
 
     def clear_cell_output(self, cell_id: str):
         cell = self.get_cell(cell_id)
@@ -52,6 +58,8 @@ class NotebookBuilder:
             logger.warning(f"Cell not found: {cell_id}")
             return
         cell.outputs = []
+        if cell.cell_type == "code":
+            cell.execution_count = None
 
     def replace_display_data(
         self, content: Union[messages.DisplayDataContent, messages.UpdateDisplayDataContent]
@@ -112,3 +120,6 @@ class SimpleOutputHandler(OutputHandler):
         self, content: Union[messages.DisplayDataContent, messages.UpdateDisplayDataContent]
     ):
         self.builder.replace_display_data(content)
+
+    async def handle_execute_input(self, msg: messages.ExecuteInput):
+        self.builder.set_execution_count(self.cell_id, msg.content.execution_count)

@@ -66,6 +66,7 @@ async def ipykernel() -> dict:
 @pytest.fixture
 async def kernel(ipykernel: dict) -> KernelSidecarClient:
     async with KernelSidecarClient(connection_info=ipykernel) as kernel:
+        kernel._handler_timeout = 5  # set a short timeout for tests to
         yield kernel
         # reset namespace after test is done, turn off debug logs if they're on to reduce noise
         log_level = logging.getLogger("kernel_sidecar").getEffectiveLevel()
