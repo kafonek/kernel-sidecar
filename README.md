@@ -33,21 +33,19 @@ pip install kernel-sidecar
 
 ## KernelSidecarClient
 
-A manager that uses `jupyter_client` under the hood to create ZMQ connections and watch for messages coming in over different ZMQ channels (`iopub`, `shell`, etc. An important assumption here is that `kernel-sidecar` is the only client talking to the Kernel, which means every message observed coming from the Kernel should be a reply (based on `parent_header_msg.msg_id`) to a request sent from this client.
+The `KernelSidecarClient` class manages the ZMQ connections to the Kernel, sending execute request or other messages to the Kernel, and processing messages coming back from the Kernel on `iopub`, `shell`, `control`, and `stdin` channels. All messages sent and received are modeled with Pydantic. When preparing to send a request to the Kernel, it's structured as a `KernelAction` which connects the request with zero-to-many callbacks for responses to that specific request.
 
-When the `KernelSidecarClient` send a request to the Kernel, it is wrapped in an `KernelAction` class. Every message received from the Kernel is delegated to the requesting Action and triggers callbacks attached to the Action class.
 
-## Actions
+## KernelAction
 
-Actions in `kernel-sidecar` encompass a request-reply cycle, including an `await action` syntax, where the Action is complete when the Kernel has reported its status returning to `idle` and optionally emitted a reply appropriate for the request. For instance, an `execute_request` is "done" when the `status` has been reported as `idle` *and* the Kernel has emitted an `execute_reply`, both with the `parent_header_msg.msg_id` the same as the `execute_request` `header.msg_id`.
-
-In a nutshell, an `actions.KernelAction` takes in a `requests.Request` and zero-to-many `handlers.Handler` subclasses (or just `async functions`) and creates an `awaitable` instance. `kernel.send(action)` submits the Request over ZMQ, and registers the Action so that all observed messages get routed to that Action to be handled by the Handlers/callbacks.
-
-Most of the time, you should be able to just use convience functions in the `KernelSidecarClient` class to create the actions. See `tests/test_actions.py` for many examples of using Actions and Handlers.
+`KernelAction` connects three key pieces of the request-reply flow between the sidecar application and the Kernel:
+ - Store the sent Request message
+ - Delegate messages to callbacks based on the request message
+ - Make the flow "awaitable" based on the Request type, e.g. an `execute_request` is done when `execute_reply` or `error` is received and `status` has gone to `idle`.
 
 ## Handlers
 
-When the `KernelSidecarClient` receives a message over ZMQ, parses it into a Pydantic model, and delegates it to the appropriate `Action` to be handled, it passes on that message to every `Handler` attached to the `Action` and awaits all of them to handle that message. `Handler` objects can define handling different message types by creating methods `handle_<msg_type>`. See `handlers.DebugHandler` or `cli.OutputHandler` for examples of custom Handlers.
+When the `KernelSidecarClient` receives a message over ZMQ, parses it into a Pydantic model, and delegates it to the appropriate `Action` to be handled, it passes on that message to every `Handler` attached to the `Action` and awaits all of them to handle that message. `Handler` objects can define handling different message types by creating methods named for the message type, e.g. `async def handle_display_data`. See `handlers.DebugHandler` or `cli.OutputHandler` for examples of custom Handlers.
 
 ## Comms
 
