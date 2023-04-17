@@ -230,7 +230,7 @@ class ExecuteReply(MessageBase):
 # - display_data and update_display_data when using IPython.display or widgets
 class ExecuteResultContent(BaseModel):
     output_type: Literal["execute_result"] = "execute_result"
-    execution_count: int
+    execution_count: Optional[int]  # arguably required by spec but have seen it missing in the wild
     data: dict  # mimebundle
     metadata: dict = Field(default_factory=dict)
 
