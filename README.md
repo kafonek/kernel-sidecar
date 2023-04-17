@@ -29,7 +29,7 @@ pip install kernel-sidecar
 
 # Key Concepts
 
-![Architecture overview diagram](docs/overview_arch_diagram.svg)
+![Architecture overview diagram](docs/overview_arch_diagram.png)
 
 ## KernelSidecarClient
 
