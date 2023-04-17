@@ -58,7 +58,8 @@ class NotebookBuilder:
             logger.warning(f"Cell not found: {cell_id}")
             return
         cell.outputs = []
-        cell.execution_count = None
+        if cell.cell_type == "code":
+            cell.execution_count = None
 
     def replace_display_data(
         self, content: Union[messages.DisplayDataContent, messages.UpdateDisplayDataContent]
