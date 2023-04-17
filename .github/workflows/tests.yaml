@@ -28,7 +28,10 @@ jobs:
 
       - name: Install dependencies
         run: poetry install
-
+        
+      # Run ipykernel "stand-alone" and set approriate env variables for tests to use this process
+      # instead of having the tests start an ipykernel using a fixture. In my experience, this
+      # reduces some race conditions that lead to flaky tests but doesn't totally remove them.
       - name: Start Ipykernel
         run: poetry run python -m ipykernel_launcher --debug -f /tmp/kernel.json & echo "KERNEL_PID=$!" >> $GITHUB_ENV
 
