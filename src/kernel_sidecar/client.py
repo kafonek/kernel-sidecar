@@ -422,16 +422,18 @@ class KernelSidecarClient:
             # the previously running action, e.g. we start getting status / content responses for
             # a new execute_request when we haven't seen execute_reply / status idle for a previous
             # execute request
-            if action is not self.running_action:
+            if self.running_action is not None and action is not self.running_action:
                 logger.warning(
                     f"Observed message for {action} while {self.running_action} has not "
                     "completed. This is a sign that expected messages didn't come over ZMQ or "
                     "the Action needs a different expected_reply_msg_type. Setting "
                     "running_action.done to True to avoid app hanging."
                 )
-
+                self.running_action: actions.KernelAction  # type hint for IDE
                 self.running_action.done.set()
                 self.running_action.running = False
+
+                self.running_action = action
 
             # Optional timeout for callbacks
             try:
