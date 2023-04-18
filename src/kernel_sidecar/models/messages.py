@@ -309,7 +309,7 @@ class UpdateDisplayDataContent(DisplayDataContent):
     transient: DisplayDataTransient
 
     @property
-    def display_id(self) -> str:
+    def display_id(self) -> Optional[str]:
         return self.transient.display_id
 
 

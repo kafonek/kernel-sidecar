@@ -9,7 +9,7 @@ server / frontends, should be implemented in handlers that are attached to each 
 """
 import asyncio
 import logging
-from typing import List
+from typing import List, Optional
 
 from kernel_sidecar.handlers.base import Handler
 from kernel_sidecar.models import messages, requests
@@ -36,7 +36,7 @@ REPLY_MSG_TYPES = {
 class KernelAction:
     REPLY_MSG_TYPES = REPLY_MSG_TYPES
 
-    def __init__(self, request: requests.Request, handlers: List[Handler] = None):
+    def __init__(self, request: requests.Request, handlers: Optional[List[Handler]] = None):
         self.request = request
         if request.header.msg_type not in self.REPLY_MSG_TYPES:
             raise ValueError(
