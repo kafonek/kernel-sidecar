@@ -1,10 +1,13 @@
 import asyncio
+import logging
 import textwrap
 
 import pytest
 from kernel_sidecar.client import KernelSidecarClient
 from kernel_sidecar.models.notebook import Notebook
 from kernel_sidecar.nb_builder import NotebookBuilder, SimpleOutputHandler
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
@@ -160,3 +163,4 @@ async def test_output_widget(kernel: KernelSidecarClient, builder: NotebookBuild
     )
     assert builder.nb.cells[3].outputs[0].output_type == "execute_result"
     assert "ZeroDivisionError" in builder.nb.cells[3].outputs[0].data["text/plain"]
+    logger.info("Finished test_output_widget")
