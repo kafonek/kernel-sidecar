@@ -119,7 +119,11 @@ async def test_output_widget(kernel: KernelSidecarClient, builder: NotebookBuild
     # So 3 actions: two execute_request, one comm_msg
     assert len(kernel.actions) == 3
     # Await all actions including the comm_msg
-    await asyncio.gather(*kernel.actions.values())
+    import logging
+
+    logger = logging.getLogger()
+    logger.info("{kernel.actions.values()=}}")
+    await asyncio.wait_for(asyncio.gather(*kernel.actions.values()), timeout=3)
 
     assert builder.nb.cells[0].outputs[0].output_type == "execute_result"
     assert builder.nb.cells[0].outputs[0].data["text/plain"] == "Output()"
