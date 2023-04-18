@@ -48,6 +48,7 @@ async def ipykernel() -> dict:
     if "IPYKERNEL_TEST_CONNECTION_FILE" in os.environ:
         logger.info(f"Using connection info from: {os.environ['IPYKERNEL_TEST_CONNECTION_FILE']}")
         yield json.load(open(os.environ["IPYKERNEL_TEST_CONNECTION_FILE"]))
+        logger.info("Tests completed using connection info for remote ipykernel")
     else:
         logger.info("Starting new AsyncKernel using jupyter_client")
         km: manager.AsyncKernelManager
@@ -79,6 +80,6 @@ async def kernel(ipykernel: dict) -> KernelSidecarClient:
             )
             await asyncio.wait_for(action, timeout=3)
         except asyncio.TimeoutError:
-            logger.warning("Timed out waiting to %reset Kernel namespace")
+            logger.warning("Timed out waiting to reset Kernel state")
         if log_level == logging.DEBUG:
             logging.getLogger("kernel_sidecar").setLevel(log_level)
