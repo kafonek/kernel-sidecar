@@ -111,11 +111,19 @@ async def test_output_widget(kernel: KernelSidecarClient, builder: NotebookBuild
     )
     cell1 = builder.add_cell(source=code)
     cell2 = builder.add_cell(source="with out: print('baz')")
-    await kernel.execute_request(
-        cell1.source, handlers=[SimpleOutputHandler(kernel, cell1.id, builder)]
+    logger.info("Executing first cell")
+    await asyncio.wait_for(
+        kernel.execute_request(
+            cell1.source, handlers=[SimpleOutputHandler(kernel, cell1.id, builder)]
+        ),
+        timeout=3,
     )
-    await kernel.execute_request(
-        cell2.source, handlers=[SimpleOutputHandler(kernel, cell2.id, builder)]
+    logger.info("Executing second cell")
+    await asyncio.wait_for(
+        kernel.execute_request(
+            cell2.source, handlers=[SimpleOutputHandler(kernel, cell2.id, builder)]
+        ),
+        3,
     )
     # While handling the "with out:" cell, OutputHandler should have sent a comm_msg back to the
     # Kernel to update the Kernel with the new Output widget state
@@ -145,8 +153,12 @@ async def test_output_widget(kernel: KernelSidecarClient, builder: NotebookBuild
     """
     )
     cell3 = builder.add_cell(source=code)
-    await kernel.execute_request(
-        cell3.source, handlers=[SimpleOutputHandler(kernel, cell3.id, builder)]
+    logger.info("Executing third cell")
+    await asyncio.wait_for(
+        kernel.execute_request(
+            cell3.source, handlers=[SimpleOutputHandler(kernel, cell3.id, builder)]
+        ),
+        timeout=3,
     )
     assert builder.nb.cells[0].outputs[0].output_type == "execute_result"
     assert builder.nb.cells[0].outputs[0].data["text/plain"] == "Output()"
@@ -161,6 +173,7 @@ async def test_output_widget(kernel: KernelSidecarClient, builder: NotebookBuild
 
     # While debugging hanging tests, have noticed execute_reply is often missing on this specific
     # request, still trying to understand why.
+    logger.info("Executing fourth cell")
     action = kernel.execute_request(
         cell4.source, handlers=[SimpleOutputHandler(kernel, cell4.id, builder)]
     )
