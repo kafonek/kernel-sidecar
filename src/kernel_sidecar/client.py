@@ -106,6 +106,7 @@ class KernelSidecarClient:
         # When we receive messages from kernel, we look up the Action by the parent_header.msg_id
         # and delegate the messages to handlers attached to that Action
         self.actions: dict[str, actions.KernelAction] = {}
+        self.running_action = Optional[actions.KernelAction] = None
 
         # message queue, raw data (dict) from all zmq channels gets dropped into here
         # and a separate asyncio.Task picks them up off the queue to pass into the
@@ -137,19 +138,6 @@ class KernelSidecarClient:
             "stdin": False,
             "control": False,
         }
-
-    @property
-    def running_action(self) -> Optional[actions.KernelAction]:
-        """
-        Return a best guess at what action the Kernel is handling right now.
-
-        The logic here is that actions is a dict, which is ordered in Python 3.6+, so iterate
-        through them until we find an action that is not done yet. The first non-done action is
-        the one we're looking for.
-        """
-        for action in self.actions.values():
-            if action.running:
-                return action
 
     def send(self, action: actions.KernelAction) -> actions.KernelAction:
         if action.sent:
@@ -434,7 +422,7 @@ class KernelSidecarClient:
             # the previously running action, e.g. we start getting status / content responses for
             # a new execute_request when we haven't seen execute_reply / status idle for a previous
             # execute request
-            if self.running_action and self.running_action is not action:
+            if action is not self.running_action:
                 logger.warning(
                     f"Observed message for {action} while {self.running_action} has not "
                     "completed. This is a sign that expected messages didn't come over ZMQ or "

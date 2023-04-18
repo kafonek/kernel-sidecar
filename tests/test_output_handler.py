@@ -158,9 +158,14 @@ async def test_output_widget(kernel: KernelSidecarClient, builder: NotebookBuild
 
     # Prove that we've been syncing state to the kernel-side widget
     cell4 = builder.add_cell(source="out.outputs")
-    await kernel.execute_request(
+
+    # While debugging hanging tests, have noticed execute_reply is often missing on this specific
+    # request, still trying to understand why.
+    action = kernel.execute_request(
         cell4.source, handlers=[SimpleOutputHandler(kernel, cell4.id, builder)]
     )
+    await asyncio.wait_for(action, timeout=3)
+
     assert builder.nb.cells[3].outputs[0].output_type == "execute_result"
     assert "ZeroDivisionError" in builder.nb.cells[3].outputs[0].data["text/plain"]
     logger.info("Finished test_output_widget")
