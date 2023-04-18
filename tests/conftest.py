@@ -73,7 +73,10 @@ async def kernel(ipykernel: dict) -> KernelSidecarClient:
         if log_level == logging.DEBUG:
             logging.getLogger("kernel_sidecar").setLevel(logging.INFO)
         try:
-            action = kernel.execute_request(code="%reset -f in out dhist")
+            action = kernel.execute_request(
+                code="get_ipython().kernel.shell.reset(new_session=True, aggressive=True)",
+                silent=True,
+            )
             await asyncio.wait_for(action, timeout=3)
         except asyncio.TimeoutError:
             logger.warning("Timed out waiting to %reset Kernel namespace")
