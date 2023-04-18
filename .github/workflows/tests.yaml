@@ -39,7 +39,7 @@ jobs:
         env:
           IPYKERNEL_TEST_CONNECTION_FILE: /tmp/kernel.json
           PYTHONASYNCIODEBUG: "1"
-        run: poetry run pytest -vv --reruns 5 -s --log-level DEBUG tests/test_output_handler.py::test_output_widget
+        run: poetry run pytest -vv --reruns 5 -s --log-level INFO tests/test_output_handler.py::test_output_widget
 
       - name: Stop Ipykernel
         if: always()
