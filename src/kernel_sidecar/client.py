@@ -106,7 +106,7 @@ class KernelSidecarClient:
         # When we receive messages from kernel, we look up the Action by the parent_header.msg_id
         # and delegate the messages to handlers attached to that Action
         self.actions: dict[str, actions.KernelAction] = {}
-        self.running_action = Optional[actions.KernelAction] = None
+        self.running_action: Optional[actions.KernelAction] = None
 
         # message queue, raw data (dict) from all zmq channels gets dropped into here
         # and a separate asyncio.Task picks them up off the queue to pass into the
