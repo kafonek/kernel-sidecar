@@ -78,10 +78,13 @@ async def kernel(ipykernel: dict) -> KernelSidecarClient:
                 code="get_ipython().kernel.shell.reset(new_session=True, aggressive=True)",
                 silent=True,
             )
-            await asyncio.wait_for(action, timeout=10)
+            # This is set to 15 because after hours of debugging CI, it seems like sometimes the
+            # jupyter_manager HB client watcher can take ~10 seconds awaiting a connection, and
+            # bumping this to 15 seconds makes the tests less flaky
+            await asyncio.wait_for(action, timeout=15)
             kernel.actions.pop(action.request.header.msg_id)
         except asyncio.TimeoutError:
-            logger.warning("Timed out waiting to %reset Kernel namespace")
+            logger.warning("Timed out waiting to reset Kernel state")
         if log_level == logging.DEBUG:
             logging.getLogger("kernel_sidecar").setLevel(log_level)
 
