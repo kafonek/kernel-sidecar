@@ -67,8 +67,8 @@ async def ipykernel() -> dict:
 @pytest.fixture
 async def kernel(ipykernel: dict) -> KernelSidecarClient:
     async with KernelSidecarClient(connection_info=ipykernel) as kernel:
-        yield kernel
-        # reset namespace after test is done, turn off debug logs if they're on to reduce noise
+        # Make sure Kernel state is all clear before yielding to the tests (shell.reset)
+        # The log level dance here is to reduce noise when trying to look at test-related DEBUG logs
         log_level = logging.getLogger("kernel_sidecar").getEffectiveLevel()
         if log_level == logging.DEBUG:
             logging.getLogger("kernel_sidecar").setLevel(logging.INFO)
@@ -82,3 +82,5 @@ async def kernel(ipykernel: dict) -> KernelSidecarClient:
             logger.warning("Timed out waiting to reset Kernel state")
         if log_level == logging.DEBUG:
             logging.getLogger("kernel_sidecar").setLevel(log_level)
+
+        yield kernel

@@ -418,11 +418,14 @@ class KernelSidecarClient:
             # Happy path: we have an Action for the parent request of messages we see coming in
             action = self.actions[msg.parent_header.msg_id]
 
+            if self.running_action is None:
+                self.running_action = action
+
             # Log warning if we think we're seeing responses for a new Action and haven't completed
             # the previously running action, e.g. we start getting status / content responses for
             # a new execute_request when we haven't seen execute_reply / status idle for a previous
             # execute request
-            if self.running_action is not None and action is not self.running_action:
+            elif action is not self.running_action:
                 logger.warning(
                     f"Observed message for {action} while {self.running_action} has not "
                     "completed. This is a sign that expected messages didn't come over ZMQ or "
@@ -435,7 +438,7 @@ class KernelSidecarClient:
 
                 self.running_action = action
 
-            # Optional timeout for callbacks
+            # Optional timeout to apply for callbacks, mostly used in tests
             try:
                 await asyncio.wait_for(action.handle_message(msg), timeout=self._handler_timeout)
             except asyncio.CancelledError:
