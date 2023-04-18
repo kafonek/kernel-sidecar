@@ -1,10 +1,13 @@
 import asyncio
 import collections
+import logging
 from typing import Optional
 
 from jupyter_client import KernelConnectionInfo
 from kernel_sidecar.client import KernelSidecarClient
 from kernel_sidecar.handlers.debug import DebugHandler
+
+logger = logging.getLogger(__name__)
 
 
 class DisconnectHandlingClient(KernelSidecarClient):
@@ -21,7 +24,9 @@ class DisconnectHandlingClient(KernelSidecarClient):
         # the currently-running action to never resolve it's "done" event (await action).
         # For this test class, "resolve" the awaitable as soon as a disconnect happens.
         # You might want to do something different in your own prod app
+        logger.info(f"ZMQ channel {channel_name} disconnected")
         if self.running_action:
+            logger.info(f"Resolving running action {self.running_action}")
             self.running_action.done.set()
             self.running_action.running = False
         self.channel_disconnects[channel_name] += 1
