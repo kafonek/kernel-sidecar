@@ -118,11 +118,10 @@ async def test_output_widget(kernel: KernelSidecarClient, builder: NotebookBuild
     # Kernel to update the Kernel with the new Output widget state
     # So 3 actions: two execute_request, one comm_msg
     assert len(kernel.actions) == 3
-    # Await all actions including the comm_msg
-    import logging
 
-    logger = logging.getLogger()
-    logger.info("{kernel.actions.values()=}}")
+    # While investigating CI sometimes getting into a stuck "running forever" state, this particular
+    # line has come under suspiscion. I don't know why it would await forever, needs more debug.
+    # Short term, putting it in a .wait_for and letting CI's --reruns arg handle it makes tests pass
     await asyncio.wait_for(asyncio.gather(*kernel.actions.values()), timeout=3)
 
     assert builder.nb.cells[0].outputs[0].output_type == "execute_result"
