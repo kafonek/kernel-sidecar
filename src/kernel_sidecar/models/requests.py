@@ -26,7 +26,7 @@ async with kernel_sidecar.KernelSidecarClient(connection_info) as kernel:
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, PrivateAttr
 
@@ -160,7 +160,7 @@ class KernelInfoRequest(Request):
 
 # https://jupyter-client.readthedocs.io/en/stable/messaging.html#comm-info
 class CommInfoRequestContent(BaseModel):
-    target_name: str = None
+    target_name: Optional[str] = None
 
 
 class CommInfoRequestHeader(RequestHeader):
