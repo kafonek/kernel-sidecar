@@ -66,16 +66,24 @@ async def ipykernel() -> dict:
 @pytest.fixture
 async def kernel(ipykernel: dict) -> KernelSidecarClient:
     async with KernelSidecarClient(connection_info=ipykernel) as kernel:
-        kernel._handler_timeout = 5  # set a short timeout for tests to
-        yield kernel
-        # reset namespace after test is done, turn off debug logs if they're on to reduce noise
+        # Reset the Kernel namespace before passing the client to a test
+        # The log level dance here is to reduce noise if DEBUG logs are on for the "shell reset"
         log_level = logging.getLogger("kernel_sidecar").getEffectiveLevel()
         if log_level == logging.DEBUG:
             logging.getLogger("kernel_sidecar").setLevel(logging.INFO)
         try:
-            action = kernel.execute_request(code="%reset -f in out dhist")
+            # like %reset magic but actually clears execution queue
+            # see https://github.com/ipython/ipython/issues/13087
+            action = kernel.execute_request(
+                code="get_ipython().kernel.shell.reset(new_session=True, aggressive=True)",
+                silent=True,
+            )
             await asyncio.wait_for(action, timeout=3)
+            kernel.actions.pop(action.request.header.msg_id)
         except asyncio.TimeoutError:
             logger.warning("Timed out waiting to %reset Kernel namespace")
         if log_level == logging.DEBUG:
             logging.getLogger("kernel_sidecar").setLevel(log_level)
+
+        kernel._handler_timeout = 5  # set a short timeout for tests to
+        yield kernel

@@ -113,6 +113,7 @@ class KernelSidecarClient:
         self.mq = asyncio.Queue()
 
         # Keep track of tasks to cancel while shutting down
+        self.is_processing = False  # turns to True entering context manager, False when exiting
         self.mq_task: asyncio.Task = None
         self.channel_watching_tasks: List[asyncio.Task] = []
         self.channel_watcher_parent_tasks: List[asyncio.Task] = []
@@ -407,6 +408,11 @@ class KernelSidecarClient:
         Action handlers are awaited before the next message is processed.
         """
         while True:
+            if not self.is_processing:
+                # This is set to False when leaving the class async context manager
+                # maybe this helps us shut down more cleanly
+                break
+
             # Pull dictionaries off the internal message queue
             raw_msg: dict = await self.mq.get()
 
@@ -511,12 +517,14 @@ class KernelSidecarClient:
             self.zmq_channels_connected[channel] = True
         self.mq_task = asyncio.create_task(self.process_message())
         await self.setup()
+        self.is_processing = True
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         # Exiting the async context / general cleanup consists of:
         # - cancel all tasks
         # - stop zmq channel connections
+        self.is_processing = False
         for task in self.channel_watcher_parent_tasks:
             task.cancel()
         for task in self.channel_watching_tasks:

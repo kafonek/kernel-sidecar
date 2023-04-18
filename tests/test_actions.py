@@ -169,13 +169,18 @@ async def test_execute_error(kernel: KernelSidecarClient):
 
 async def test_input(kernel: KernelSidecarClient):
     """
-    Show that the kernel.execute_request() helper method builds an appropriate ExecuteRequest
-    and we see the expected results in an attached handler.
+    Show how to send content over the `stdin` channel when receiving an `input_request` message
+    over ZMQ from the Kernel because a user executed `input()`.
     """
     handler = DebugHandler()
 
-    async def reply_to_input_request(msg: messages.Message):
-        if msg.msg_type == "input_request":
+    # Create a Handler class that will send in "test_input" to the stdin in channel when it sees
+    # an input_request message coming from the Kernel over ZMQ
+    class InputReplyHandler(Handler):
+        def __init__(self, kernel: KernelSidecarClient):
+            self.kernel = kernel
+
+        async def handle_input_request(self, msg: messages.InputRequest):
             kernel.send_stdin("test input")
 
     code = textwrap.dedent(
@@ -184,7 +189,7 @@ async def test_input(kernel: KernelSidecarClient):
     x
     """
     )
-    action = kernel.execute_request(code, handlers=[handler, reply_to_input_request])
+    action = kernel.execute_request(code, handlers=[handler, InputReplyHandler(kernel)])
     await action
     assert handler.counts == {
         "status": 2,
