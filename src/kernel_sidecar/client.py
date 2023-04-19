@@ -18,7 +18,6 @@ assert handler.counts == {"status": 2, "kernel_info_reply": 1}
 import asyncio
 import logging
 import pprint
-from dataclasses import dataclass, field
 from typing import Awaitable, Callable, List, Optional, Type
 
 import pydantic
@@ -35,17 +34,6 @@ from kernel_sidecar.models import messages, requests
 from kernel_sidecar.settings import get_settings
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(order=True)
-class PrioritizedZMQData:
-    """
-    KernelSidecarClient.mq (message queue) will be a PrioritizedQueue so that the process_message
-    coro can pull off higher priority messages (control, shell) before lower priority ones (iopub)
-    """
-
-    priority: int  # control: 1, shell: 2, stdin: 3, iopub: 4
-    data: dict = field(compare=False)
 
 
 class CommTargetNotFound(Exception):
@@ -122,7 +110,7 @@ class KernelSidecarClient:
         # message queue, raw data (dict) from all zmq channels gets dropped into here
         # and a separate asyncio.Task picks them up off the queue to pass into the
         # right Action for handling callbacks
-        self.mq = asyncio.PriorityQueue()  # value types: PrioritizedZMQData
+        self.mq = asyncio.Queue()
 
         # Keep track of tasks to cancel while shutting down
         self.is_processing = False  # turns to True entering context manager, False when exiting
@@ -391,15 +379,13 @@ class KernelSidecarClient:
 
     async def _watch_channel_for_messages(self, channel: ZMQSocketChannel, channel_name: str):
         """Takes messages seen on zmq and drops them into our internal asyncio.Queue"""
-        priority = {"control": 0, "iopub": 1, "stdin": 2, "shell": 3}[channel_name]
         while True:
             try:
                 if not channel.is_alive():
                     await asyncio.sleep(0.001)
                     continue
                 raw_msg: dict = await channel.get_msg()
-                mq_item = PrioritizedZMQData(priority=priority, data=raw_msg)
-                self.mq.put_nowait(mq_item)
+                self.mq.put_nowait(raw_msg)
                 msg_type = raw_msg.get("msg_type", "")
 
                 # When using kernel-sidecar in a production app, we noticed that pprint.pformat
@@ -426,8 +412,7 @@ class KernelSidecarClient:
         """
         while True:
             # Pull dictionaries off the internal message queue
-            mq_item: PrioritizedZMQData = await self.mq.get()
-            raw_msg: dict = mq_item.data
+            raw_msg: dict = await self.mq.get()
 
             # kernel status "starting" is one example of messages with no parent header
             if not raw_msg.get("parent_header"):
