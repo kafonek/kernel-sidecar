@@ -425,11 +425,6 @@ class KernelSidecarClient:
         Action handlers are awaited before the next message is processed.
         """
         while True:
-            if not self.is_processing:
-                # This is set to False when leaving the class async context manager
-                # maybe this helps us shut down more cleanly
-                break
-
             # Pull dictionaries off the internal message queue
             mq_item: PrioritizedZMQData = await self.mq.get()
             raw_msg: dict = mq_item.data
@@ -462,9 +457,6 @@ class KernelSidecarClient:
                 logger.warning(
                     f"Observed message for {action} while {self.running_action} has not finished"
                 )
-
-                # self.running_action.done.set()
-                # self.running_action.running = False
 
             # Optional timeout for callbacks
             try:
@@ -531,15 +523,13 @@ class KernelSidecarClient:
             self.channel_watcher_parent_tasks.append(task)
             self.zmq_channels_connected[channel] = True
         self.mq_task = asyncio.create_task(self.process_message())
-        await self.setup()
-        self.is_processing = True
+        await self.setup()  # in prod, this would be things like importing libs and registering Comms
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         # Exiting the async context / general cleanup consists of:
         # - cancel all tasks
         # - stop zmq channel connections
-        self.is_processing = False
         for task in self.channel_watcher_parent_tasks:
             task.cancel()
         for task in self.channel_watching_tasks:

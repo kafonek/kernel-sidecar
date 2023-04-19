@@ -51,13 +51,13 @@ class KernelAction:
         self.kernel_idle = asyncio.Event()  # gets set when kernel status reports idle
         self.reply_seen = asyncio.Event()  # gets set when we see execute_reply or the like
         self.done = asyncio.Event()
-        self.safety_net_task = None
+        self.safety_net_task = None  # see .kernel_idle_safety_net docstring
 
         # Routing messages to handlers
         self.handlers = handlers or []
 
         # Flips to True during kernel.send, and kernel.send won't send anything over ZMQ if the
-        # Action.sent is True. Avoid weird edge cases with routing messages to different Action
+        # Action.sent is True. Avoids weird edge cases with routing messages to different Action
         # instances that might have same request msg_id
         self.sent = False
 
@@ -74,12 +74,7 @@ class KernelAction:
 
     def __await__(self) -> asyncio.Event:
         """Support 'await action' syntax"""
-        try:
-            return self.done.wait().__await__()
-        except Exception as e:
-            print("\n\n")
-            print(f"In {e} for {self}")
-            print("\n\n")
+        return self.done.wait().__await__()
 
     async def maybe_set_done(self):
         """
@@ -102,10 +97,8 @@ class KernelAction:
         """
         Sometimes we just don't see the expected reply, who knows why. It seems most common with
         execute_reply, especially during tests running in CI but I've seen it happen in prod too.
-
-
         """
-        await asyncio.sleep(3)
+        await asyncio.sleep(3)  # Todo: decide if this needs to be a setting
         if self.running and self.expected_reply_msg_type:
             logger.warning(
                 f"Action {self} still running 3 seconds after Kernel went idle. Expected to see "
@@ -115,8 +108,14 @@ class KernelAction:
             await self.maybe_set_done()
 
     async def handle_message(self, msg: messages.Message):
-        """Delegate message to the appropriate handler defined in subclasses"""
+        """
+        Delegate message to the appropriate handler defined in subclasses and try to determine
+        if this Action is "done", meaning the Kernel has cycled from busy to idle and we've seen
+        an expected message reply type (or kicked off a "safety net" task since sometimes we do
+        not see the expected reply, especially for execute_request / execute_reply)
+        """
         # Delegate the message to any attached handlers, in the order they were attached
+        # TODO: consider pros and cons of asyncio.gather handlers instead of awaiting serially
         for handler in self.handlers:
             await handler(msg)
 
@@ -130,7 +129,7 @@ class KernelAction:
                 # Normally shouldn't see kernel go idle before we see the expected reply type
                 # but hence the name, this is a safety net
                 if self.running:
-                    logger.warning(f"Creating safety net task for {self}")
+                    logger.debug(f"Creating safety net task for {self}")
                     self.safety_net_task = asyncio.create_task(self.kernel_idle_safety_net())
 
         elif msg.msg_type == self.expected_reply_msg_type:
