@@ -48,9 +48,10 @@ class KernelAction:
 
         # Events tied to making this instance awaitable
         self.running = False
-        self.kernel_idle = asyncio.Event()
-        self.reply_seen = asyncio.Event()
+        self.kernel_idle = asyncio.Event()  # gets set when kernel status reports idle
+        self.reply_seen = asyncio.Event()  # gets set when we see execute_reply or the like
         self.done = asyncio.Event()
+        self.safety_net_task = None
 
         # Routing messages to handlers
         self.handlers = handlers or []
@@ -73,7 +74,12 @@ class KernelAction:
 
     def __await__(self) -> asyncio.Event:
         """Support 'await action' syntax"""
-        return self.done.wait().__await__()
+        try:
+            return self.done.wait().__await__()
+        except Exception as e:
+            print("\n\n")
+            print(f"In {e} for {self}")
+            print("\n\n")
 
     async def maybe_set_done(self):
         """
@@ -84,10 +90,29 @@ class KernelAction:
         """
         if self.kernel_idle.is_set():
             if self.reply_seen.is_set() or not self.expected_reply_msg_type:
-                self.done.set()
-                self.running = False
                 for handler in self.handlers:
                     await handler.action_complete()
+
+                self.running = False
+                self.done.set()
+                if self.safety_net_task:
+                    self.safety_net_task.cancel()
+
+    async def kernel_idle_safety_net(self):
+        """
+        Sometimes we just don't see the expected reply, who knows why. It seems most common with
+        execute_reply, especially during tests running in CI but I've seen it happen in prod too.
+
+
+        """
+        await asyncio.sleep(3)
+        if self.running and self.expected_reply_msg_type:
+            logger.warning(
+                f"Action {self} still running 3 seconds after Kernel went idle. Expected to see "
+                f"{self.expected_reply_msg_type} by now but have not. Setting done anyway."
+            )
+            self.reply_seen.set()
+            await self.maybe_set_done()
 
     async def handle_message(self, msg: messages.Message):
         """Delegate message to the appropriate handler defined in subclasses"""
@@ -102,6 +127,12 @@ class KernelAction:
             elif msg.content.execution_state == "idle":
                 self.kernel_idle.set()
                 await self.maybe_set_done()
+                # Normally shouldn't see kernel go idle before we see the expected reply type
+                # but hence the name, this is a safety net
+                if self.running:
+                    logger.warning(f"Creating safety net task for {self}")
+                    self.safety_net_task = asyncio.create_task(self.kernel_idle_safety_net())
+
         elif msg.msg_type == self.expected_reply_msg_type:
             self.reply_seen.set()
             await self.maybe_set_done()
