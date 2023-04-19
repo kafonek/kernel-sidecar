@@ -236,8 +236,10 @@ async def test_interrupt(kernel: KernelSidecarClient):
     action1 = kernel.execute_request(code="import time; time.sleep(600)", handlers=[handler1])
     action2 = kernel.execute_request(code="1 + 1", handlers=[handler2])
     action3 = kernel.interrupt_request(handlers=[handler3])
-    # Fail in a reasonable time if something goes wrong, don't let test run for 10 minutes
-    await asyncio.wait_for(asyncio.gather(action1, action2, action3), timeout=10)
+    # Fail in a reasonable time if something goes wrong, don't let tests hang forever
+    # That said, in CI we frequently see coro HBChannel._async_run take 10-15 seconds on this test
+    # in particular. Why??
+    await asyncio.wait_for(asyncio.gather(action1, action2, action3), timeout=20)
     assert handler1.counts == {"status": 2, "execute_input": 1, "error": 1, "execute_reply": 1}
     assert handler1.get_last_msg("error").content.ename == "KeyboardInterrupt"
     assert handler1.get_last_msg("execute_reply").content.status == "error"
