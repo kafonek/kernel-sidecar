@@ -169,13 +169,18 @@ async def test_execute_error(kernel: KernelSidecarClient):
 
 async def test_input(kernel: KernelSidecarClient):
     """
-    Show that the kernel.execute_request() helper method builds an appropriate ExecuteRequest
-    and we see the expected results in an attached handler.
+    Show how to send content over the `stdin` channel when receiving an `input_request` message
+    over ZMQ from the Kernel because a user executed `input()`.
     """
     handler = DebugHandler()
 
-    async def reply_to_input_request(msg: messages.Message):
-        if msg.msg_type == "input_request":
+    # Create a Handler class that will send in "test_input" to the stdin in channel when it sees
+    # an input_request message coming from the Kernel over ZMQ
+    class InputReplyHandler(Handler):
+        def __init__(self, kernel: KernelSidecarClient):
+            self.kernel = kernel
+
+        async def handle_input_request(self, msg: messages.InputRequest):
             kernel.send_stdin("test input")
 
     code = textwrap.dedent(
@@ -184,7 +189,7 @@ async def test_input(kernel: KernelSidecarClient):
     x
     """
     )
-    action = kernel.execute_request(code, handlers=[handler, reply_to_input_request])
+    action = kernel.execute_request(code, handlers=[handler, InputReplyHandler(kernel)])
     await action
     assert handler.counts == {
         "status": 2,
@@ -231,8 +236,10 @@ async def test_interrupt(kernel: KernelSidecarClient):
     action1 = kernel.execute_request(code="import time; time.sleep(600)", handlers=[handler1])
     action2 = kernel.execute_request(code="1 + 1", handlers=[handler2])
     action3 = kernel.interrupt_request(handlers=[handler3])
-    # Fail in a reasonable time if something goes wrong, don't let test run for 10 minutes
-    await asyncio.wait_for(asyncio.gather(action1, action2, action3), timeout=10)
+    # Fail in a reasonable time if something goes wrong, don't let tests hang forever
+    # That said, in CI we frequently see coro HBChannel._async_run take 10-15 seconds on this test
+    # in particular. Why??
+    await asyncio.wait_for(asyncio.gather(action1, action2, action3), timeout=20)
     assert handler1.counts == {"status": 2, "execute_input": 1, "error": 1, "execute_reply": 1}
     assert handler1.get_last_msg("error").content.ename == "KeyboardInterrupt"
     assert handler1.get_last_msg("execute_reply").content.status == "error"

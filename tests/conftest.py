@@ -63,19 +63,34 @@ async def ipykernel() -> dict:
                 logger.warning("Timed out waiting for kernel shutdown")
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 async def kernel(ipykernel: dict) -> KernelSidecarClient:
     async with KernelSidecarClient(connection_info=ipykernel) as kernel:
-        kernel._handler_timeout = 5  # set a short timeout for tests to
         yield kernel
-        # reset namespace after test is done, turn off debug logs if they're on to reduce noise
-        log_level = logging.getLogger("kernel_sidecar").getEffectiveLevel()
-        if log_level == logging.DEBUG:
-            logging.getLogger("kernel_sidecar").setLevel(logging.INFO)
-        try:
-            action = kernel.execute_request(code="%reset -f in out dhist")
-            await asyncio.wait_for(action, timeout=3)
-        except asyncio.TimeoutError:
-            logger.warning("Timed out waiting to %reset Kernel namespace")
-        if log_level == logging.DEBUG:
-            logging.getLogger("kernel_sidecar").setLevel(log_level)
+
+
+@pytest.fixture(autouse=True)
+async def reset_kernel_state(kernel: KernelSidecarClient):
+    kernel.actions.clear()
+    kernel.comm_manager.comms.clear()
+    # Reset the Kernel namespace before passing the client to a test
+    # The log level dance here is to reduce noise if DEBUG logs are on for the "shell reset"
+    log_level = logging.getLogger("kernel_sidecar").getEffectiveLevel()
+    if log_level == logging.DEBUG:
+        logging.getLogger("kernel_sidecar").setLevel(logging.INFO)
+    try:
+        # like %reset magic but actually clears execution queue
+        # see https://github.com/ipython/ipython/issues/13087
+        action = kernel.execute_request(
+            code="get_ipython().kernel.shell.reset(new_session=True, aggressive=True)",
+            silent=True,
+        )
+        # This is set to 15 because after hours of debugging CI, it seems like sometimes the
+        # jupyter_manager HB client watcher can take ~10 seconds awaiting a connection, and
+        # bumping this to 15 seconds makes the tests less flaky
+        await asyncio.wait_for(action, timeout=15)
+        kernel.actions.pop(action.request.header.msg_id)
+    except asyncio.TimeoutError:
+        logger.warning("Timed out waiting to reset Kernel state")
+    if log_level == logging.DEBUG:
+        logging.getLogger("kernel_sidecar").setLevel(log_level)

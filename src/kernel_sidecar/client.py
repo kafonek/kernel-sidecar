@@ -113,7 +113,11 @@ class KernelSidecarClient:
         self.mq = asyncio.Queue()
 
         # Keep track of tasks to cancel while shutting down
-        self.mq_task: asyncio.Task = None
+        self.is_processing = False  # turns to True entering context manager, False when exiting
+        self.mq_task: asyncio.Task = None  # picks things up off the PriorityQueue to process
+        # One parent task with two child tasks per ZMQ channel:
+        # - watch for zmq disconnect
+        # - pick up zmq messages off socket and drop onto PriorityQueue
         self.channel_watching_tasks: List[asyncio.Task] = []
         self.channel_watcher_parent_tasks: List[asyncio.Task] = []
 
@@ -436,14 +440,8 @@ class KernelSidecarClient:
             # execute request
             if self.running_action and self.running_action is not action:
                 logger.warning(
-                    f"Observed message for {action} while {self.running_action} has not "
-                    "completed. This is a sign that expected messages didn't come over ZMQ or "
-                    "the Action needs a different expected_reply_msg_type. Setting "
-                    "running_action.done to True to avoid app hanging."
+                    f"Observed message for {action} while {self.running_action} has not finished"
                 )
-
-                self.running_action.done.set()
-                self.running_action.running = False
 
             # Optional timeout for callbacks
             try:
@@ -510,7 +508,7 @@ class KernelSidecarClient:
             self.channel_watcher_parent_tasks.append(task)
             self.zmq_channels_connected[channel] = True
         self.mq_task = asyncio.create_task(self.process_message())
-        await self.setup()
+        await self.setup()  # in prod, this would be things like importing libs and registering Comms
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):

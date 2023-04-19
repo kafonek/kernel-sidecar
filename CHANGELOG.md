@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+### Added
+- `KernelAction.kernel_idle_safety_net()` is called when the Kernel has cycled busy/idle for an Action but we haven't seen the expected reply message for the request yet, will resolve the `Action` as "done" in 3 seconds if the reply hasn't been seen yet
+  - Stops us from getting stuck waiting forever on an `Action` if the reply never comes through, seems somewhat common with `execute_request` / `execute_reply` in CI and has been seen in prod deploys
 
 ## [0.5.3] - 2023-04-17
 ### Added

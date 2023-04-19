@@ -43,5 +43,7 @@ async def test_zmq_disconnect(ipykernel: dict):
         # A stream size larger than max_message_size should cause a disconnect
         handler = DebugHandler()
         action = kernel.execute_request(code="print('x' * 2048)", handlers=[handler])
-        await asyncio.wait_for(action, timeout=5)
+        # When reconnecting ZMQ in CI, the HBChannel._async_run coro can take crazy amounts of time
+        # in local dev / prod, it's nearly instant.
+        await asyncio.wait_for(action, timeout=30)
         assert kernel.channel_disconnects == {"iopub": 1}
