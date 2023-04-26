@@ -275,6 +275,7 @@ class DisplayDataContent(BaseModel):
     output_type: Literal["display_data"] = "display_data"
     data: dict  # mimebundle
     metadata: dict = Field(default_factory=dict)
+    # R Kernel does not include the transient key, Python client always seems to though
     transient: Optional[DisplayDataTransient] = None
 
     class Config:
@@ -307,6 +308,7 @@ class UpdateDisplayDataContent(DisplayDataContent):
     output_type: Literal["update_display_data"] = "update_display_data"
     data: dict  # mimebundle
     metadata: dict = Field(default_factory=dict)
+    # R Kernel does not include the transient key, Python client always seems to though
     transient: Optional[DisplayDataTransient] = None
 
     @property
