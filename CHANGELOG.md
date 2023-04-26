@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.5.5] - 2023-04-26
+### Fixed
+- Make `transient` key on `display_data` and `update_display_data` messages, Python kernel seems to always include that key but R kernel never does
+
 ## [0.5.4] - 2023-04-19
 ### Added
 - `KernelAction.kernel_idle_safety_net()` is called when the Kernel has cycled busy/idle for an Action but we haven't seen the expected reply message for the request yet, will resolve the `Action` as "done" in 3 seconds if the reply hasn't been seen yet
