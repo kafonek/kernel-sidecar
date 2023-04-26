@@ -275,7 +275,7 @@ class DisplayDataContent(BaseModel):
     output_type: Literal["display_data"] = "display_data"
     data: dict  # mimebundle
     metadata: dict = Field(default_factory=dict)
-    transient: DisplayDataTransient
+    transient: Optional[DisplayDataTransient] = None
 
     class Config:
         # including transient in a saved .json file would be invalid jupyter spec, so by default
@@ -287,7 +287,8 @@ class DisplayDataContent(BaseModel):
 
     @property
     def display_id(self) -> Optional[str]:
-        return self.transient.display_id
+        if self.transient:
+            return self.transient.display_id
 
 
 class DisplayData(MessageBase):
@@ -306,11 +307,12 @@ class UpdateDisplayDataContent(DisplayDataContent):
     output_type: Literal["update_display_data"] = "update_display_data"
     data: dict  # mimebundle
     metadata: dict = Field(default_factory=dict)
-    transient: DisplayDataTransient
+    transient: Optional[DisplayDataTransient] = None
 
     @property
     def display_id(self) -> Optional[str]:
-        return self.transient.display_id
+        if self.transient:
+            return self.transient.display_id
 
 
 class UpdateDisplayData(MessageBase):
