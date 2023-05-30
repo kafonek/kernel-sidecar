@@ -223,7 +223,7 @@ class ExecuteReplyAbortContent(BaseModel):
 
 
 ExecuteReplyContent = Annotated[
-    Union[ExecuteReplyOkContent, ExecuteReplyErrorContent, ExecuteReplyAbortedContent],
+    Union[ExecuteReplyOkContent, ExecuteReplyErrorContent, ExecuteReplyAbortedContent, ExecuteReplyAbortContent],
     Field(discriminator="status"),
 ]
 
