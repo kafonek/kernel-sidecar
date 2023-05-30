@@ -137,6 +137,7 @@ class CellStatus(str, enum.Enum):
     ok = "ok"
     error = "error"
     aborted = "aborted"
+    abort = "abort"  # irkernel uses this instead of aborted
 
 
 # "When status is ‘error’, the usual content of a successful reply should be omitted,
@@ -208,6 +209,14 @@ class ExecuteReplyErrorContent(BaseModel):
 
 class ExecuteReplyAbortedContent(BaseModel):
     status: Literal[CellStatus.aborted] = CellStatus.aborted
+
+    class Config:
+        use_enum_values = True
+
+
+class ExecuteReplyAbortContent(BaseModel):
+    # Needed to support irkernel
+    status: Literal[CellStatus.abort] = CellStatus.abort
 
     class Config:
         use_enum_values = True
