@@ -3,6 +3,7 @@ import textwrap
 
 import pytest
 from kernel_sidecar.client import KernelSidecarClient
+from kernel_sidecar.handlers.debug import DebugHandler
 from kernel_sidecar.models.notebook import Notebook
 from kernel_sidecar.nb_builder import NotebookBuilder, SimpleOutputHandler
 
@@ -26,6 +27,34 @@ async def test_stream(kernel: KernelSidecarClient, builder: NotebookBuilder):
         "text": "foo\nbar\n",
     }
     assert builder.nb.cells[0].execution_count == 1
+
+
+async def test_squash_stream(kernel: KernelSidecarClient, builder: NotebookBuilder):
+    """
+    Test that when we get multiple stream outputs in a row, we squash them into a single output.
+    Sleeps for .2 seconds seem to be around the duration for ipykernel to emit multiple stream
+    messages as opposed to "squashing" within the kernel.
+    """
+    code = textwrap.dedent(
+        """
+    import time
+    for i in range(3):
+        print(i)
+        time.sleep(.2)
+"""
+    )
+    cell = builder.add_cell(source=code)
+    debug_handler = DebugHandler()
+    output_handler = SimpleOutputHandler(kernel, cell.id, builder)
+    await kernel.execute_request(cell.source, handlers=[debug_handler, output_handler])
+    # Show that we received three stream messages, but squashed them into a single output
+    assert debug_handler.counts["stream"] == 3
+    assert len(builder.nb.cells[0].outputs) == 1
+    assert builder.nb.cells[0].outputs[0].dict() == {
+        "output_type": "stream",
+        "name": "stdout",
+        "text": "0\n1\n2\n",
+    }
 
 
 async def test_display_data(kernel: KernelSidecarClient, builder: NotebookBuilder):

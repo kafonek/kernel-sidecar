@@ -33,6 +33,13 @@ class OutputHandler(Handler):
         # to the document model
         self.output_widget_contexts: List[WidgetHandler] = []
 
+        # Attempt to squash streaming output, such as what happens when doing a !pip install
+        # 1. When receiving a stream message, store here and don't immediately call add_cell_content
+        # 2. If next received output is not a stream, call add_cell_content with the stored stream
+        #    then the newly received output. Otherwise combine stream
+        # 3. When cell execution is finished, call add_cell_content with the stored stream
+        self.stored_stream_content: messages.StreamContent = None
+
     # The following five methods should be overridden to update the document model using your own
     # Notebook builder implementation. The methods below that probably don't need to be overridden,
     # and take care of calling these five methods in the correct contexts (i.e. Output widget
@@ -67,7 +74,20 @@ class OutputHandler(Handler):
             await self.sync_output_widget_state(handler)
             await self.add_output_widget_content(handler, content)
         else:  # not in Output widget context, just update Notebook document model
-            await self.add_cell_content(content)
+            # Squashing streaming output here instead of in .handle_stream because we're not going
+            # to try and deal with the nightmare edge cases of squashing streaming data in every
+            # possible widget context.
+            if isinstance(content, messages.StreamContent) and content.name == "stdout":
+                if self.stored_stream_content:
+                    self.stored_stream_content.text += content.text
+                else:
+                    self.stored_stream_content = content
+            else:
+                if self.stored_stream_content:
+                    await self.add_cell_content(self.stored_stream_content)
+                    self.stored_stream_content = None
+                else:
+                    await self.add_cell_content(content)
 
     async def clear_content(self):
         if self.output_widget_contexts:
@@ -95,6 +115,12 @@ class OutputHandler(Handler):
             await self.clear_content()
             self.clear_on_next_output = False
         await self.add_content(msg.content)
+
+    async def handle_execute_reply(self, msg: messages.ExecuteReply):
+        # Squash any stored stream content if there's still some cached
+        if self.stored_stream_content:
+            await self.add_cell_content(self.stored_stream_content)
+            self.stored_stream_content = None
 
     async def handle_error(self, msg: messages.Error):
         if self.clear_on_next_output:
