@@ -96,6 +96,9 @@ class OutputHandler(Handler):
             await self.sync_output_widget_state(handler)
             await self.clear_output_widget_content(handler)
         else:
+            # clear out squashed stored stream content if we're clearing
+            if self.stored_stream_content:
+                self.stored_stream_content = None
             await self.clear_cell_content()
 
     async def sync_output_widget_state(self, handler: WidgetHandler):
