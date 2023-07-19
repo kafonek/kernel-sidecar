@@ -23,9 +23,12 @@ class OutputHandler(Handler):
     messages which may update different parts of the document besides the currently running cell.
     """
 
-    def __init__(self, client: KernelSidecarClient, cell_id: str):
+    def __init__(
+        self, client: KernelSidecarClient, cell_id: str, squash_streaming_output: bool = False
+    ):
         self.client = client
         self.cell_id = cell_id
+        self.squash_streaming_output = squash_streaming_output
 
         self.clear_on_next_output = False
         # .output_widget_contexts will be a list of Output widget Commhandler's. If user code enters
@@ -33,7 +36,7 @@ class OutputHandler(Handler):
         # to the document model
         self.output_widget_contexts: List[WidgetHandler] = []
 
-        # Attempt to squash streaming output, such as what happens when doing a !pip install
+        # Support for squashing streaming output, so things like !pip install create a single output
         # 1. When receiving a stream message, store here and don't immediately call add_cell_content
         # 2. If next received output is not a stream, call add_cell_content with the stored stream
         #    then the newly received output. Otherwise combine stream
@@ -74,6 +77,10 @@ class OutputHandler(Handler):
             await self.sync_output_widget_state(handler)
             await self.add_output_widget_content(handler, content)
         else:  # not in Output widget context, just update Notebook document model
+            # if squashing streaming output is disabled, go right to adding cell content
+            if not self.squash_streaming_output:
+                return await self.add_cell_content(content)
+
             # Squashing streaming output here instead of in .handle_stream because we're not going
             # to try and deal with the nightmare edge cases of squashing streaming data in every
             # possible widget context.

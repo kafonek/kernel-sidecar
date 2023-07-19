@@ -100,8 +100,18 @@ class SimpleOutputHandler(OutputHandler):
     to replace the Output widget mimetype with actual output content.
     """
 
-    def __init__(self, client: KernelSidecarClient, cell_id: str, builder: NotebookBuilder):
-        super().__init__(client, cell_id)
+    def __init__(
+        self,
+        client: KernelSidecarClient,
+        cell_id: str,
+        builder: NotebookBuilder,
+        squash_streaming_output: bool = False,
+    ):
+        super().__init__(
+            client=client,
+            cell_id=cell_id,
+            squash_streaming_output=squash_streaming_output,
+        )
         self.builder = builder
 
     async def add_cell_content(self, content: ContentType):
