@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.5.6] - 2023-09-21
+### Fixed
+ - Small parsing error on `kernel_info_reply` identified when using the Deno kernel
+
 ## [0.5.5] - 2023-04-26
 ### Fixed
 - Make `transient` key on `display_data` and `update_display_data` messages, Python kernel seems to always include that key but R kernel never does
