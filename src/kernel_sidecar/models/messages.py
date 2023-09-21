@@ -64,7 +64,7 @@ import enum
 from datetime import datetime
 from typing import Annotated, Any, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 
 
 # Used for both header and parent_header
@@ -373,8 +373,15 @@ class LanguageInfo(BaseModel):
     mimetype: str
     file_extension: str
     pygments_lexer: Optional[str] = None
-    codemirror_mode: Union[str, dict]
+    codemirror_mode: Optional[Union[str, dict]] = None # if this is empty, make it same as name
     nbconvert_exporter: Optional[str] = None
+
+    @validator("codemirror_mode")
+    def validate_codemirror_mode(cls, v, values):
+        if v is None:
+            return values["name"]
+        return v
+
 
     class Config:
         extra = "allow"
