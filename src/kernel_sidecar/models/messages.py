@@ -373,15 +373,14 @@ class LanguageInfo(BaseModel):
     mimetype: str
     file_extension: str
     pygments_lexer: Optional[str] = None
-    codemirror_mode: Optional[Union[str, dict]] = None # if this is empty, make it same as name
+    codemirror_mode: Optional[Union[str, dict]]  # if this is empty, make it same as name
     nbconvert_exporter: Optional[str] = None
 
-    @validator("codemirror_mode")
+    @validator("codemirror_mode", always=True)
     def validate_codemirror_mode(cls, v, values):
         if v is None:
             return values["name"]
         return v
-
 
     class Config:
         extra = "allow"

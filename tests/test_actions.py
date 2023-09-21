@@ -3,6 +3,7 @@ import textwrap
 from unittest.mock import AsyncMock
 
 import pytest
+
 from kernel_sidecar import actions
 from kernel_sidecar.client import KernelSidecarClient
 from kernel_sidecar.handlers.base import Handler
