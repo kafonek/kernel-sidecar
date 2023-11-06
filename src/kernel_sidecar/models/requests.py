@@ -51,10 +51,10 @@ class Metadata(BaseModel):
 
 
 class Request(BaseModel):
-    content: BaseModel = Field(default_factory=dict)  # usually overriden in submodel
+    content: dict = Field(default_factory=dict)  # usually overriden in submodel
     header: RequestHeader = Field(default_factory=RequestHeader)
     metadata: Metadata = Field(default_factory=Metadata)
-    parent_header: BaseModel = Field(default_factory=dict)
+    parent_header: dict = Field(default_factory=dict)
     _channel: str = PrivateAttr(default="shell")
 
 

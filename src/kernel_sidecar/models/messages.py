@@ -79,9 +79,9 @@ class Header(BaseModel):
 
 class MessageBase(BaseModel):
     buffers: list = Field(default_factory=list)
-    content: BaseModel = Field(default_factory=dict)
+    content: dict = Field(default_factory=dict)
     header: Header
-    metadata: BaseModel = Field(default_factory=dict)
+    metadata: dict = Field(default_factory=dict)
     msg_id: str
     msg_type: str  # must be overwritten as Literal in submodel
     parent_header: Header
