@@ -201,7 +201,7 @@ class KernelSidecarClient:
     def execute_request(
         self, code: str, silent: bool = False, handlers: List[Handler] = None
     ) -> actions.KernelAction:
-        req = requests.ExecuteRequest(content={"code": code, "silent": silent})
+        req = requests.ExecuteRequest(content=requests.ExecuteRequestContent(code=code, silent=silent))
         action = actions.KernelAction(request=req, handlers=handlers)
         return self.send(action)
 

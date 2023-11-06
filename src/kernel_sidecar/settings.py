@@ -1,13 +1,10 @@
 import functools
-
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     pprint_logs: bool = False
-
-    class Config:
-        env_prefix = "kernel_sidecar_"
+    model_config = SettingsConfigDict(env_prefix="kernel_sidecar_")
 
 
 # cached get_settings
