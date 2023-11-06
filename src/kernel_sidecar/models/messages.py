@@ -252,7 +252,7 @@ class Stream(MessageBase):
 # and they'll be rendered with the same value, disp1 updated to content 'bar'.
 # https://jupyter-client.readthedocs.io/en/stable/messaging.html#display-data
 class DisplayDataTransient(BaseModel):
-    display_id: Optional[str] = None
+    display_id: Optional[Union[str, int]] = None
     model_config = ConfigDict(extra="allow")
 
 
@@ -267,7 +267,7 @@ class DisplayDataContent(BaseModel):
     model_config = ConfigDict(fields={"transient": {"exclude": True}})
 
     @property
-    def display_id(self) -> Optional[str]:
+    def display_id(self) -> Optional[Union[str, int]]:
         if self.transient:
             return self.transient.display_id
 
