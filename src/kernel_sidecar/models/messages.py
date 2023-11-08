@@ -262,8 +262,12 @@ class DisplayDataContent(BaseModel):
     metadata: dict = Field(default_factory=dict)
     # R Kernel does not include the transient key, Python client always seems to though
     transient: Optional[DisplayDataTransient] = None
-    # TODO[pydantic]: The following keys were removed: `fields`.
-    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
+    
+    # including transient in a saved .json file would be invalid jupyter spec, so by default
+    # don't write out that field when calling .json().
+    # If we decide to rethink that idea, then NotebookBuilder or Notebook or something would
+    # want to call something pretty gnarly liike:
+    # .json(exclude={'cells': {'__all__': {'outputs': {'__all__': {'transient': True}}}}})
     model_config = ConfigDict(fields={"transient": {"exclude": True}})
 
     @property
@@ -357,10 +361,12 @@ class LanguageInfo(BaseModel):
     # TODO[pydantic]: We couldn't refactor the `validator`, please replace it by `field_validator` manually.
     # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-validators for more information.
     @validator("codemirror_mode", always=True)
+    @classmethod
     def validate_codemirror_mode(cls, v, values):
         if v is None:
             return values["name"]
         return v
+    
     model_config = ConfigDict(extra="allow")
 
 

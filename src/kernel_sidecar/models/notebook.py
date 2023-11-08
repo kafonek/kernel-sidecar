@@ -7,15 +7,15 @@ import nbformat
 nb = nbformat.v4.new_notebook()
 nb.cells.append(nbformat.v4.new_code_cell("1 + 1"))
 
-notebook = Notebook.parse_obj(nb.dict())
+notebook = Notebook.parse_obj(nb.model_dump())
 
-assert notebook.dict() == nb.dict()
+assert notebook.model_dump() == nb.model_dump()
 """
 
 import uuid
 from typing import Annotated, List, Literal, Optional, Union
 
-from pydantic import field_validator, ConfigDict, BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from kernel_sidecar.models import messages
 
