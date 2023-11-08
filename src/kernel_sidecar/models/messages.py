@@ -261,14 +261,13 @@ class DisplayDataContent(BaseModel):
     data: dict  # mimebundle
     metadata: dict = Field(default_factory=dict)
     # R Kernel does not include the transient key, Python client always seems to though
-    transient: Optional[DisplayDataTransient] = None
-    
+    transient: Optional[DisplayDataTransient] = Field(..., exclude=True)
     # including transient in a saved .json file would be invalid jupyter spec, so by default
     # don't write out that field when calling .json().
     # If we decide to rethink that idea, then NotebookBuilder or Notebook or something would
     # want to call something pretty gnarly liike:
     # .json(exclude={'cells': {'__all__': {'outputs': {'__all__': {'transient': True}}}}})
-    model_config = ConfigDict(fields={"transient": {"exclude": True}})
+
 
     @property
     def display_id(self) -> Optional[Union[str, int]]:
