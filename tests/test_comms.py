@@ -1,6 +1,7 @@
 import textwrap
 
 import pytest
+
 from kernel_sidecar.client import CommTargetNotFound, KernelSidecarClient
 from kernel_sidecar.comms import CommHandler
 from kernel_sidecar.handlers.debug import DebugHandler
@@ -98,6 +99,10 @@ async def test_kernel_open_comm(kernel: KernelSidecarClient):
     msg_handler = DebugHandler()
     code = textwrap.dedent(
         """
+    # ignore this deprecation warning or we end up with an errand stream message in our counts
+    import warnings
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
+
     from ipykernel.comm import Comm
     comm = Comm(target_name="test_comm", data="connected")
     comm.send({"hello": "world"})

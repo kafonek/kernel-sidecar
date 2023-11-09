@@ -34,7 +34,7 @@ raw_data = {'buffers': [],
 import pydantic
 from kernel_sidecar.models import messages
 
-msg = pydantic.parse_obj_as(messages.Message, raw_data)
+msg = pydantic.TypeAdapter(messages.Message).validate_python(raw_data)
 msg
 >>> Status(
     buffers=[],
@@ -64,7 +64,7 @@ import enum
 from datetime import datetime
 from typing import Annotated, Any, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 
 # Used for both header and parent_header
@@ -354,16 +354,13 @@ class LanguageInfo(BaseModel):
     mimetype: str
     file_extension: str
     pygments_lexer: Optional[str] = None
-    codemirror_mode: Optional[Union[str, dict]] = None  # if this is empty, make it same as name
+    codemirror_mode: Annotated[Optional[Union[str, dict]], Field(validate_default=True)] = None
     nbconvert_exporter: Optional[str] = None
 
-    # TODO[pydantic]: We couldn't refactor the `validator`, please replace it by `field_validator` manually.
-    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-validators for more information.
-    @validator("codemirror_mode", always=True)
-    @classmethod
-    def validate_codemirror_mode(cls, v, values):
+    @field_validator("codemirror_mode")
+    def validate_codemirror_mode(cls, v, info: ValidationInfo):
         if v is None:
-            return values["name"]
+            return info.data.get('name')
         return v
     
     model_config = ConfigDict(extra="allow")
@@ -505,7 +502,7 @@ class InputRequest(MessageBase):
 
 
 # See module docstring. Use:
-# msg = pydantic.parse_obj_as(Message, raw_dict_from_zmq)
+# msg = pydantic.TypeAdapter(Message).validate_python(raw_dict_from_zmq)
 # msg will be one of the specific message types in the Union below complete with its own
 # custom content or other nested models.
 Message = Annotated[

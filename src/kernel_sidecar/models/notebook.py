@@ -7,7 +7,7 @@ import nbformat
 nb = nbformat.v4.new_notebook()
 nb.cells.append(nbformat.v4.new_code_cell("1 + 1"))
 
-notebook = Notebook.parse_obj(nb.model_dump())
+notebook = Notebook.validate_python(nb.model_dump())
 
 assert notebook.model_dump() == nb.model_dump()
 """
@@ -63,7 +63,7 @@ class RawCell(CellBase):
     cell_type: Literal["raw"] = "raw"
 
 
-# Use: List[NotebookCell] or pydantic.parse_obj_as(NotebookCell, dict)
+# Use: List[NotebookCell] or TypeAdapter(NotebookCell).validate_python(data)
 NotebookCell = Annotated[
     Union[
         CodeCell,

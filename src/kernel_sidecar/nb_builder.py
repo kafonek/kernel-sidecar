@@ -31,7 +31,7 @@ class NotebookBuilder:
         data = {"id": id or str(uuid.uuid4()), "source": source, "cell_type": cell_type}
         if self.get_cell(data["id"]):
             data["id"] = str(uuid.uuid4())
-        cell = pydantic.parse_obj_as(notebook.NotebookCell, data)
+        cell = pydantic.TypeAdapter(notebook.NotebookCell).validate_python(data)
         self.nb.cells.append(cell)
         return cell
 
@@ -72,7 +72,7 @@ class NotebookBuilder:
 
     def hydrate_output_widgets(self) -> notebook.Notebook:
         widget_mimetype = "application/vnd.jupyter.widget-view+json"
-        cleaned = self.nb.copy(deep=True)
+        cleaned = self.nb.model_copy(deep=True)
         for cell in cleaned.cells:
             for idx, output in enumerate(cell.outputs):
                 if isinstance(output, (messages.DisplayDataContent, messages.ExecuteResultContent)):

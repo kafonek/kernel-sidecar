@@ -49,5 +49,5 @@ async def test_kernel_info_missing_codemirror_mode():
             "version": "5.3",
         },
     }
-    message = pydantic.parse_obj_as(Message, msg)
+    message = pydantic.TypeAdapter(Message).validate_python(msg)
     assert message.content.language_info.codemirror_mode == "typescript"

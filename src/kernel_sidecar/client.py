@@ -410,6 +410,8 @@ class KernelSidecarClient:
 
         Action handlers are awaited before the next message is processed.
         """
+        # used to parse incoming messages into the appropriate Pydantic model
+        type_adapter = pydantic.TypeAdapter(self._message_model)
         while True:
             # Pull dictionaries off the internal message queue
             raw_msg: dict = await self.mq.get()
@@ -421,7 +423,7 @@ class KernelSidecarClient:
 
             # Getting a ValidationError here probably means we need to add new Message models
             try:
-                msg = pydantic.parse_obj_as(messages.Message, raw_msg)
+                msg = type_adapter.validate_python(raw_msg)
             except pydantic.ValidationError as e:
                 await self.handle_unparseable_message(raw_msg, e)
 
