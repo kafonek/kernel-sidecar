@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "kernel-sidecar"
-version = "0.5.6"
+version = "1.0.0"
 description = "A sidecar "
 authors = ["Matt Kafonek <matt.kafonek@noteable.io>"]
 readme = "README.md"
@@ -9,11 +9,12 @@ packages = [{include = "kernel_sidecar", from = "src"}]
 repository = "https://github.com/kafonek/kernel-sidecar"
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = "^3.9"
 jupyter-client = ">=7.3.4"
-pydantic = "^1.10.4"
+pydantic = ">2"
 structlog = {version = "*", optional = true }
 typer = {version = "*", optional = true }
+pydantic-settings = ">2"
 
 [tool.poetry.extras]
 cli = ["structlog", "typer"]
@@ -29,6 +30,7 @@ ipywidgets = "^8.0.4"
 jupyterlab = "^3.6.1"
 pytest-rerunfailures = "^11.1.1"
 structlog = "^22.3.0"
+bump-pydantic = "^0.7.0"
 
 
 [build-system]
@@ -48,5 +50,7 @@ line-length = 100
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 filterwarnings = [
-    "ignore::DeprecationWarning",
+    "ignore::DeprecationWarning:ipykernel.*",
+    "ignore::DeprecationWarning:jupyter_client.*",
+    "ignore::DeprecationWarning:json.*"
 ]

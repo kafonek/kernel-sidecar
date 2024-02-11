@@ -7,15 +7,15 @@ import nbformat
 nb = nbformat.v4.new_notebook()
 nb.cells.append(nbformat.v4.new_code_cell("1 + 1"))
 
-notebook = Notebook.parse_obj(nb.dict())
+notebook = Notebook.validate_python(nb.model_dump())
 
-assert notebook.dict() == nb.dict()
+assert notebook.model_dump() == nb.model_dump()
 """
 
 import uuid
 from typing import Annotated, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from kernel_sidecar.models import messages
 
@@ -40,19 +40,18 @@ class CellBase(BaseModel):
     source: str = ""
     metadata: dict = Field(default_factory=dict)
 
-    @validator("source", pre=True)
+    @field_validator("source", mode="before")
+    @classmethod
     def multiline_source(cls, v):
         if isinstance(v, list):
             return "\n".join(v)
         return v
-
-    class Config:
-        validate_on_assignment = True
+    model_config = ConfigDict(validate_on_assignment=True)
 
 
 class CodeCell(CellBase):
     cell_type: Literal["code"] = "code"
-    execution_count: Optional[int]
+    execution_count: Optional[int] = None
     outputs: List[CellOutput] = Field(default_factory=list)
 
 
@@ -64,7 +63,7 @@ class RawCell(CellBase):
     cell_type: Literal["raw"] = "raw"
 
 
-# Use: List[NotebookCell] or pydantic.parse_obj_as(NotebookCell, dict)
+# Use: List[NotebookCell] or TypeAdapter(NotebookCell).validate_python(data)
 NotebookCell = Annotated[
     Union[
         CodeCell,
@@ -81,7 +80,8 @@ class Notebook(BaseModel):
     metadata: dict = Field(default_factory=dict)
     cells: List[NotebookCell] = Field(default_factory=list)
 
-    @validator("cells")
+    @field_validator("cells")
+    @classmethod
     def ensure_unique_cell_ids(cls, v):
         cell_ids = []
         cleaned_cells = []

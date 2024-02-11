@@ -28,7 +28,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 SESSION_ID = str(uuid.uuid4())
 
@@ -47,16 +47,14 @@ class RequestHeader(BaseModel):
 
 
 class Metadata(BaseModel):
-    # support arbitrary dict here: req = Request(metadata={'anykey': 'no validation error'})
-    class Config:
-        allow_extra = True
+    model_config = ConfigDict(allow_extra=True)
 
 
 class Request(BaseModel):
-    content: BaseModel = Field(default_factory=BaseModel)  # usually overriden in submodel
+    content: dict = Field(default_factory=dict)  # usually overriden in submodel
     header: RequestHeader = Field(default_factory=RequestHeader)
     metadata: Metadata = Field(default_factory=Metadata)
-    parent_header: BaseModel = Field(default_factory=BaseModel)
+    parent_header: dict = Field(default_factory=dict)
     _channel: str = PrivateAttr(default="shell")
 
 

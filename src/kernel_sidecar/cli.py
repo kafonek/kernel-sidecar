@@ -44,7 +44,7 @@ async def connect(connection_info: KernelConnectionInfo, tail: bool):
         handler = DebugHandler()
         await kernel.kernel_info_request(handlers=[handler])
         kernel_info: messages.KernelInfoReply = handler.get_last_msg("kernel_info_reply")
-        logger.info(pprint.pformat(kernel_info.content.dict()))
+        logger.info(pprint.pformat(kernel_info.content.model_dump()))
         if tail:
             while True:
                 await asyncio.sleep(0.01)

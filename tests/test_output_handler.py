@@ -2,6 +2,7 @@ import asyncio
 import textwrap
 
 import pytest
+
 from kernel_sidecar.client import KernelSidecarClient
 from kernel_sidecar.models.notebook import Notebook
 from kernel_sidecar.nb_builder import NotebookBuilder, SimpleOutputHandler
@@ -20,7 +21,7 @@ async def test_stream(kernel: KernelSidecarClient, builder: NotebookBuilder):
     cell = builder.add_cell(source=code)
     handler = SimpleOutputHandler(kernel, cell.id, builder)
     await kernel.execute_request(cell.source, handlers=[handler])
-    assert builder.nb.cells[0].outputs[0].dict() == {
+    assert builder.nb.cells[0].outputs[0].model_dump() == {
         "output_type": "stream",
         "name": "stdout",
         "text": "foo\nbar\n",

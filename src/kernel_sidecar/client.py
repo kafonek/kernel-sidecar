@@ -171,7 +171,7 @@ class KernelSidecarClient:
         # Send the request over the appropriate zmq channel
         try:
             channel: ZMQSocketChannel = getattr(self.kc, f"{action.request._channel}_channel")
-            channel.send(action.request.dict())
+            channel.send(action.request.model_dump())
             action.sent = True
             # Update the .actions dictionary so that we route any observed messages coming to us
             # over ZMQ into this action for handling callbacks
@@ -180,13 +180,13 @@ class KernelSidecarClient:
             log_msg = f"Sent {action.request.header.msg_type} to kernel"
             log_extra = {}
             if get_settings().pprint_logs:
-                log_extra["body"] = pprint.pformat(action.request.dict())
+                log_extra["body"] = pprint.pformat(action.request.model_dump())
             logger.debug(log_msg, extra=log_extra)
         except Exception as e:
             log_msg = f"Error sending {action.request.header.msg_type} message over ZMQ"
             log_extra = {}
             if get_settings().pprint_logs:
-                log_extra["body"] = pprint.pformat(action.request.dict())
+                log_extra["body"] = pprint.pformat(action.request.model_dump())
             logger.error(log_msg, extra=log_extra, exc_info=True)
             raise e
         return action
@@ -201,7 +201,7 @@ class KernelSidecarClient:
     def execute_request(
         self, code: str, silent: bool = False, handlers: List[Handler] = None
     ) -> actions.KernelAction:
-        req = requests.ExecuteRequest(content={"code": code, "silent": silent})
+        req = requests.ExecuteRequest(content=requests.ExecuteRequestContent(code=code, silent=silent))
         action = actions.KernelAction(request=req, handlers=handlers)
         return self.send(action)
 
@@ -298,9 +298,9 @@ class KernelSidecarClient:
         """
         req = requests.InputReply(content={"value": value})
         try:
-            self.kc.stdin_channel.send(req.dict())
+            self.kc.stdin_channel.send(req.model_dump())
         except Exception:
-            logger.exception("Error sending input_reply to stdin", extra={"body": req.dict()})
+            logger.exception("Error sending input_reply to stdin", extra={"body": req.model_dump()})
 
     async def watch_channel(self, channel_name: str):
         """
@@ -410,6 +410,8 @@ class KernelSidecarClient:
 
         Action handlers are awaited before the next message is processed.
         """
+        # used to parse incoming messages into the appropriate Pydantic model
+        type_adapter = pydantic.TypeAdapter(self._message_model)
         while True:
             # Pull dictionaries off the internal message queue
             raw_msg: dict = await self.mq.get()
@@ -421,7 +423,7 @@ class KernelSidecarClient:
 
             # Getting a ValidationError here probably means we need to add new Message models
             try:
-                msg = pydantic.parse_obj_as(messages.Message, raw_msg)
+                msg = type_adapter.validate_python(raw_msg)
             except pydantic.ValidationError as e:
                 await self.handle_unparseable_message(raw_msg, e)
 

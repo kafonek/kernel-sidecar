@@ -34,7 +34,7 @@ raw_data = {'buffers': [],
 import pydantic
 from kernel_sidecar.models import messages
 
-msg = pydantic.parse_obj_as(messages.Message, raw_data)
+msg = pydantic.TypeAdapter(messages.Message).validate_python(raw_data)
 msg
 >>> Status(
     buffers=[],
@@ -64,7 +64,7 @@ import enum
 from datetime import datetime
 from typing import Annotated, Any, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 
 # Used for both header and parent_header
@@ -79,9 +79,9 @@ class Header(BaseModel):
 
 class MessageBase(BaseModel):
     buffers: list = Field(default_factory=list)
-    content: BaseModel = Field(default_factory=BaseModel)
+    content: dict = Field(default_factory=dict)
     header: Header
-    metadata: BaseModel = Field(default_factory=BaseModel)
+    metadata: dict = Field(default_factory=dict)
     msg_id: str
     msg_type: str  # must be overwritten as Literal in submodel
     parent_header: Header
@@ -96,9 +96,7 @@ class KernelStatus(str, enum.Enum):
 
 class StatusContent(BaseModel):
     execution_state: KernelStatus
-
-    class Config:
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
 
 
 class Status(MessageBase):
@@ -185,9 +183,7 @@ class ExecuteReplyOkContent(BaseModel):
     execution_count: int
     payload: List[Payload] = Field(default_factory=list)
     user_expressions: dict = Field(default_factory=dict)
-
-    class Config:
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
 
 
 class ExecuteReplyErrorContent(BaseModel):
@@ -198,19 +194,12 @@ class ExecuteReplyErrorContent(BaseModel):
     ename: Optional[str] = None
     evalue: Optional[str] = None
     traceback: List[str] = Field(default_factory=list)
-    # ipykernel sends over engine_info and payload as well, but that's not technically in spec
-    # so just handle it with extra="allow" below
-
-    class Config:
-        use_enum_values = True
-        extra = "allow"
+    model_config = ConfigDict(use_enum_values=True, extra="allow")
 
 
 class ExecuteReplyAbortedContent(BaseModel):
     status: Literal[CellStatus.aborted] = CellStatus.aborted
-
-    class Config:
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
 
 
 ExecuteReplyContent = Annotated[
@@ -249,9 +238,7 @@ class StreamContent(BaseModel):
     output_type: Literal["stream"] = "stream"
     name: StreamChannel
     text: str
-
-    class Config:
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
 
 
 class Stream(MessageBase):
@@ -265,10 +252,8 @@ class Stream(MessageBase):
 # and they'll be rendered with the same value, disp1 updated to content 'bar'.
 # https://jupyter-client.readthedocs.io/en/stable/messaging.html#display-data
 class DisplayDataTransient(BaseModel):
-    display_id: Optional[str] = None
-
-    class Config:
-        extra = "allow"
+    display_id: Optional[Union[str, int]] = None
+    model_config = ConfigDict(extra="allow")
 
 
 class DisplayDataContent(BaseModel):
@@ -276,18 +261,16 @@ class DisplayDataContent(BaseModel):
     data: dict  # mimebundle
     metadata: dict = Field(default_factory=dict)
     # R Kernel does not include the transient key, Python client always seems to though
-    transient: Optional[DisplayDataTransient] = None
+    transient: Optional[DisplayDataTransient] = Field(..., exclude=True)
+    # including transient in a saved .json file would be invalid jupyter spec, so by default
+    # don't write out that field when calling .json().
+    # If we decide to rethink that idea, then NotebookBuilder or Notebook or something would
+    # want to call something pretty gnarly liike:
+    # .json(exclude={'cells': {'__all__': {'outputs': {'__all__': {'transient': True}}}}})
 
-    class Config:
-        # including transient in a saved .json file would be invalid jupyter spec, so by default
-        # don't write out that field when calling .json().
-        # If we decide to rethink that idea, then NotebookBuilder or Notebook or something would
-        # want to call something pretty gnarly liike:
-        # .json(exclude={'cells': {'__all__': {'outputs': {'__all__': {'transient': True}}}}})
-        fields = {"transient": {"exclude": True}}
 
     @property
-    def display_id(self) -> Optional[str]:
+    def display_id(self) -> Optional[Union[str, int]]:
         if self.transient:
             return self.transient.display_id
 
@@ -299,9 +282,7 @@ class DisplayData(MessageBase):
 
 class UpdateDisplayTransient(BaseModel):
     display_id: str
-
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 class UpdateDisplayDataContent(DisplayDataContent):
@@ -326,7 +307,7 @@ class UpdateDisplayData(MessageBase):
 class CommOpenContent(BaseModel):
     comm_id: str
     target_name: str
-    data: Any
+    data: Any = None
 
 
 class CommOpen(MessageBase):
@@ -336,7 +317,7 @@ class CommOpen(MessageBase):
 
 class CommMsgContent(BaseModel):
     comm_id: str
-    data: Any
+    data: Any = None
 
 
 class CommMsg(MessageBase):
@@ -346,7 +327,7 @@ class CommMsg(MessageBase):
 
 class CommCloseContent(BaseModel):
     comm_id: str
-    data: Any
+    data: Any = None
 
 
 class CommClose(MessageBase):
@@ -373,17 +354,16 @@ class LanguageInfo(BaseModel):
     mimetype: str
     file_extension: str
     pygments_lexer: Optional[str] = None
-    codemirror_mode: Optional[Union[str, dict]]  # if this is empty, make it same as name
+    codemirror_mode: Annotated[Optional[Union[str, dict]], Field(validate_default=True)] = None
     nbconvert_exporter: Optional[str] = None
 
-    @validator("codemirror_mode", always=True)
-    def validate_codemirror_mode(cls, v, values):
+    @field_validator("codemirror_mode")
+    def validate_codemirror_mode(cls, v, info: ValidationInfo):
         if v is None:
-            return values["name"]
+            return info.data.get('name')
         return v
-
-    class Config:
-        extra = "allow"
+    
+    model_config = ConfigDict(extra="allow")
 
 
 class KernelInfoReplyContent(BaseModel):
@@ -522,7 +502,7 @@ class InputRequest(MessageBase):
 
 
 # See module docstring. Use:
-# msg = pydantic.parse_obj_as(Message, raw_dict_from_zmq)
+# msg = pydantic.TypeAdapter(Message).validate_python(raw_dict_from_zmq)
 # msg will be one of the specific message types in the Union below complete with its own
 # custom content or other nested models.
 Message = Annotated[

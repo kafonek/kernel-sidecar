@@ -141,11 +141,11 @@ async def test_execute_display_update(kernel: KernelSidecarClient):
     }
     display_data: messages.DisplayData = handler.get_last_msg("display_data")
     assert display_data.content.data == {"text/plain": "'hello world'"}
-    assert display_data.content.transient == {"display_id": "test_display"}
+    assert display_data.content.transient.model_dump() == {"display_id": "test_display"}
     update_display_data = handler.get_last_msg("update_display_data")
     assert isinstance(update_display_data, messages.UpdateDisplayData)
     assert update_display_data.content.data == {"text/plain": "'updated display'"}
-    assert update_display_data.content.transient == {"display_id": "test_display"}
+    assert update_display_data.content.transient.model_dump() == {"display_id": "test_display"}
 
 
 async def test_execute_error(kernel: KernelSidecarClient):
